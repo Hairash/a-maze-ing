@@ -62,7 +62,7 @@ function processKey(key, data) {
         setTimeout(() => {
             alert('You found way out!');
             window.location.reload();
-        }, 100);
+        }, consts.CELL_HIDE_DELAY);
     }
 }
 
