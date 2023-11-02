@@ -40,6 +40,7 @@ function differentCells(x1, y1, x2, y2, field) {
     return field[x1][y1] === 'wall' && field[x2][y2] !== 'wall' || field[x1][y1] !== 'wall' && field[x2][y2] === 'wall'
 }
 
+// Create wave field - number of walls from random start cell to each one
 function wave(field, width, height) {
     const wField = [];
     for (let x = 0; x < width; x++) {
@@ -50,8 +51,8 @@ function wave(field, width, height) {
         }
         wField.push(line);
     }
-    console.log('Start wave field:');
-    outputField(wField);
+    // console.log('Start wave field:');
+    // outputField(wField);
     const [startX, startY] = selectEmptyRandomCell(field, width, height);
 
     wField[startX][startY] = 0;
@@ -63,23 +64,26 @@ function wave(field, width, height) {
         for (let neighbour of neighbours) {
             const [x, y] = neighbour;
             const prevValue = wField[x][y];
+            // What is it?
             // if (differentCells(x, y, curX, curY, field)) wField[x][y] = Math.min(wField[x][y], wField[curX][curY] + 1);
             if (field[x][y] === 'wall') wField[x][y] = Math.min(wField[x][y], wField[curX][curY] + 1);
             else wField[x][y] = Math.min(wField[x][y], wField[curX][curY]);
             if (wField[x][y] < prevValue) queue.push([x, y]);
         }
     }
-    console.log('Wave field:');
-    outputField(wField);
+    // console.log('Wave field:');
+    // outputField(wField);
     return wField;
 }
 
+// Find cell with max value in the wave field
 function getMaxNumCell(wField, field) {
     let max = 0;
     let maxCell = [];
     for (let x = 0; x < wField.length; x++) {
         for (let y = 0; y < wField[x].length; y++) {
             const cell = wField[x][y];
+            // Why?
             // if (!(cell % 2)) max = Math.max(cell, max);
             if (field[x][y] !== 'wall') {
                 if (cell > max) {
@@ -93,42 +97,43 @@ function getMaxNumCell(wField, field) {
     return {num: max, cell: maxCell};
 }
 
+// Remove wall from cell if there is an N-1 wall nearby
 function fixWall(wField, field, width, height, maxNum, wallX, wallY) {
-    console.log('fixWall', wallX, wallY);
+    // console.log('fixWall', wallX, wallY);
     const neighbours = findNeighbours(wallX, wallY, width, height);
-    console.log('Wall neighbours:', neighbours);
+    // console.log('Wall neighbours:', neighbours);
     for (let neighbour of neighbours) {
         const [x, y] = neighbour;
         if (wField[x][y] === maxNum - 1) {
-            // outputField(field);
-            // console.log('Before:', field[wallX][wallY]);
+            // TODO: Make consts with cell values
             field[wallX][wallY] = 'empty';
-            console.log('Wall', wallX, wallY, 'fixed');
-            // console.log('After:', field[wallX][wallY]);
-            // outputField(field);
+            // console.log('Wall', wallX, wallY, 'fixed');
             return true;
         }
     }
     return false;
 }
 
+// TODO: Move to utils
 function outputField(field) {
     const fieldT = field[0].map((_, colIndex) => field.map(row => row[colIndex]));
     console.log(fieldT);
 }
 
+// Remove wall with highest wave value
 function fixWave(wField, field, width, height, maxNum, startX, startY) {
-    console.log('Fix wave');
+    // console.log('Fix wave');
     const queue = [[startX, startY]];
-    const visitedNeighbours = [];
+    const visitedCells = new Set();
     while(queue.length > 0) {
-    // for (let i = 0; i < 10; i++) {
-        console.log('Queue:', JSON.stringify(queue));
+        // console.log('Queue:', JSON.stringify(queue));
         const [curX, curY] = queue.shift();
-        visitedNeighbours.push(`${curX}, ${curY}`);
-        console.log('Current cell:', curX, curY, width, height);
+        if (visitedCells.has(`${curX}, ${curY}`)) continue;
+        visitedCells.add(`${curX}, ${curY}`);
+        // console.log('Current cell:', curX, curY, width, height);
         const neighbours = findNeighbours(curX, curY, width, height);
-        console.log('Neighbours:', neighbours);
+        // console.log('Neighbours:', neighbours);
+        // TODO: Beautify this peace
         for (let neighbour of neighbours) {
             const [x, y] = neighbour;
             if (wField[x][y] !== maxNum) continue;
@@ -139,7 +144,11 @@ function fixWave(wField, field, width, height, maxNum, startX, startY) {
                     return;
                 }
             }
-            else if (!visitedNeighbours.includes(`${x}, ${y}`)) queue.push([x, y]);
+            else {
+                const alreadyVisited = visitedCells.has(`${x}, ${y}`);
+                // console.log(`already visited: ${alreadyVisited}`);
+                if (!alreadyVisited) queue.push([x, y]);
+            }
         }
     }
 }
@@ -147,7 +156,7 @@ function fixWave(wField, field, width, height, maxNum, startX, startY) {
 function makeFieldLinked(field, width, height) {
     let wField = wave(field, width, height);
     let maxNumCell = getMaxNumCell(wField, field);
-    console.log('MaxNumCell:', maxNumCell);
+    // console.log('MaxNumCell:', maxNumCell);
     let maxNum = maxNumCell.num;
     let [startX, startY] = maxNumCell.cell;
     while (maxNum > 0) {
@@ -172,19 +181,19 @@ function generateField(width, height) {
         }
         field.push(col);
     }
-    const [finishX, finishY] = generateItem(width, height, field);
+    const [finishX, finishY] = selectEmptyRandomCell(field, width, height);
     field[finishX][finishY] = 'finish';
-    console.log('Output field');
-    outputField(field);
+    // console.log('Output field');
+    // outputField(field);
     makeFieldLinked(field, width, height);
     return field;
 }
 
-function generateItem(width, height, field) {
-    const x = Math.floor(Math.random() * width);
-    const y = Math.floor(Math.random() * height);
-    return [x, y];
-}
+// function generateItem(width, height, field) {
+//     const x = Math.floor(Math.random() * width);
+//     const y = Math.floor(Math.random() * height);
+//     return [x, y];
+// }
 
 function selectEmptyRandomCell(field, width, height) {
     while (true) {

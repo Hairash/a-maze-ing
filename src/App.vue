@@ -1,7 +1,6 @@
 <script>
 import Board from './components/Board.vue'
-import { generateField, selectEmptyRandomCell } from './game/generator.js'
-import { processKey } from './game/engine.js'
+import { processKey, scrollToPoint, initLevel } from './game/engine.js'
 import * as consts from './game/const.js'
 
 
@@ -11,29 +10,27 @@ export default {
     Board,
   },
   data() {
-    const width = consts.BOARD.width;
-    const height = consts.BOARD.height;
-    const field = generateField(width, height);
-    const [heroX, heroY] = selectEmptyRandomCell(field, width, height);
-    console.log('Hero:', heroX, heroY);
-    const heroSight = consts.INIT_SIGHT;
-    const cellSize = consts.CELL_SIZE;
-    const stepCtr = 0;
-    // console.log(field);
-
     return {
-      width,
-      height,
-      field,
-      heroX,
-      heroY,
-      heroSight,
-      cellSize,
-      stepCtr,
+      width: consts.BOARD.width,
+      height: consts.BOARD.height,
+      field: null,
+      heroX: 0,
+      heroY: 0,
+      heroSight: -1,
+      cellSize: consts.CELL_SIZE,
+      stepCtr: 0,
     }
   },
   created() {
+    initLevel(this);
+    window.addEventListener('load', (e) => {
+      // TODO: Forbid manual scroll and hide scrollers
+      scrollToPoint(this.heroX, this.heroY, this.cellSize);
+    });
+
     window.addEventListener('keydown', (e) => {
+      // TODO: Prevent only arrow keys actions
+      e.preventDefault();
       processKey(e.key, this);
     });
   }
