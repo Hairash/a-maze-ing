@@ -8,6 +8,7 @@
       :hero-x=heroX
       :hero-y=heroY
       :hero-sight=heroSight
+      @handleClick="handleClick"
     />
   </main>
 </template>
@@ -48,37 +49,13 @@ export default {
       e.preventDefault();
       processKey(e.key, this);
     });
+  },
 
-    window.addEventListener('touchstart', (e) => {
-      // e.preventDefault();
-      const touch = e.touches[0];
-      // console.log(touch);
-      const touchX = touch.screenX;
-      // console.log(touchX);
-      const touchY = touch.screenY;
-      // console.log(touchY);
-
-      // Get the dimensions of the screen / container
-      const width = window.innerWidth;
-      const height = window.innerHeight;
-      // console.log(width, height);
-
-      // Determine which part of the screen was touched
-      if (touchX > width * 0.7) {
-        // Right part of the screen
-        processKey('ArrowRight', this);
-      } else if (touchX < width * 0.3) {
-        // Left part of the screen
-        processKey('ArrowLeft', this);
-      } else if (touchY > height * 0.7) {
-        // Bottom part of the screen
-        processKey('ArrowDown', this);
-      } else if (touchY < height * 0.3) {
-        // Top part of the screen
-        processKey('ArrowUp', this);
-      }
-    });
-  }
+  methods: {
+    handleClick(key) {
+      processKey(key, this);
+    }
+  },
 }
 </script>
 
