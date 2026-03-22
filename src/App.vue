@@ -54,6 +54,9 @@ import Board from './components/Board.vue'
 import { processKey, scrollToPoint, clampScrollToBoardBounds, initLevel } from './game/engine.js'
 import * as consts from './game/const.js'
 
+const STORAGE_KEY = 'a-maze-ing:game-state';
+const MAX_VISIBLE_CELLS = 11;
+
 export default {
   name: 'App',
   components: {
@@ -80,7 +83,8 @@ export default {
     }
   },
   created() {
-    initLevel(this);
+    this.updateCellSize();
+    this.initializeGameState();
   },
 
   mounted() {
@@ -95,6 +99,7 @@ export default {
     document.body.addEventListener('scroll', this.handleWindowScroll, { passive: true });
     document.body.addEventListener('scroll', this.scheduleMovePadPositionUpdate, { passive: true });
     window.addEventListener('resize', this.handleWindowScroll);
+    window.addEventListener('resize', this.updateCellSize);
     window.addEventListener('resize', this.updateMovePadVisibility);
     window.addEventListener('resize', this.scheduleMovePadPositionUpdate);
     window.addEventListener('load', this.queueCenterOnHero);
@@ -109,6 +114,7 @@ export default {
     document.body.removeEventListener('scroll', this.handleWindowScroll);
     document.body.removeEventListener('scroll', this.scheduleMovePadPositionUpdate);
     window.removeEventListener('resize', this.handleWindowScroll);
+    window.removeEventListener('resize', this.updateCellSize);
     window.removeEventListener('resize', this.updateMovePadVisibility);
     window.removeEventListener('resize', this.scheduleMovePadPositionUpdate);
     window.removeEventListener('load', this.queueCenterOnHero);
@@ -116,12 +122,86 @@ export default {
   },
 
   watch: {
-    field() {
-      this.queueCenterOnHero();
+    field: {
+      handler() {
+        this.queueCenterOnHero();
+        this.persistGameState();
+      },
+      deep: true,
     },
+    heroX() { this.persistGameState(); },
+    heroY() { this.persistGameState(); },
+    heroSight() { this.persistGameState(); },
+    stepCtr() { this.persistGameState(); },
   },
 
   methods: {
+    initializeGameState() {
+      if (this.restoreGameState()) return;
+      initLevel(this);
+    },
+
+    getCellSizeByViewport() {
+      if (typeof window === 'undefined') return consts.CELL_SIZE;
+      const viewportWidth = document.documentElement.clientWidth;
+      if (viewportWidth >= consts.CELL_SIZE * MAX_VISIBLE_CELLS) return consts.CELL_SIZE;
+      return Math.max(1, Math.floor(viewportWidth / MAX_VISIBLE_CELLS));
+    },
+
+    updateCellSize() {
+      const nextCellSize = this.getCellSizeByViewport();
+      if (this.cellSize === nextCellSize) return;
+      this.cellSize = nextCellSize;
+      this.queueCenterOnHero();
+    },
+
+    isValidStoredState(state) {
+      if (!state || typeof state !== 'object') return false;
+      if (!Array.isArray(state.field) || !state.field.length) return false;
+      if (state.width !== this.width || state.height !== this.height) return false;
+      if (typeof state.heroX !== 'number' || typeof state.heroY !== 'number') return false;
+      if (typeof state.heroSight !== 'number' || typeof state.stepCtr !== 'number') return false;
+      if (state.heroX < 0 || state.heroX >= this.width || state.heroY < 0 || state.heroY >= this.height) return false;
+      return true;
+    },
+
+    restoreGameState() {
+      try {
+        const rawState = localStorage.getItem(STORAGE_KEY);
+        if (!rawState) return false;
+        const state = JSON.parse(rawState);
+        if (!this.isValidStoredState(state)) return false;
+
+        this.field = state.field;
+        this.heroX = state.heroX;
+        this.heroY = state.heroY;
+        this.heroSight = state.heroSight;
+        this.stepCtr = state.stepCtr;
+        return true;
+      } catch (error) {
+        console.warn('Cannot restore game state', error);
+        return false;
+      }
+    },
+
+    persistGameState() {
+      if (!this.field) return;
+      try {
+        const state = {
+          width: this.width,
+          height: this.height,
+          field: this.field,
+          heroX: this.heroX,
+          heroY: this.heroY,
+          heroSight: this.heroSight,
+          stepCtr: this.stepCtr,
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      } catch (error) {
+        console.warn('Cannot save game state', error);
+      }
+    },
+
     centerOnHero() {
       this.$nextTick(() => {
         setTimeout(() => {
