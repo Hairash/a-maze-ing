@@ -28,41 +28,38 @@ function processCell(data) {
 }
 
 function processKey(key, data) {
-    console.log(key);
+    let isMoved = false;
     switch(key) {
         case 'ArrowRight':
             if (isCellEmpty(data.field, data.width, data.height, data.heroX + 1, data.heroY)) {
                 data.heroX += 1;
-                if (data.heroX > consts.INIT_SIGHT + 1) {
-                    window.scrollBy(data.cellSize, 0);
-                }
+                isMoved = true;
             }
         break;
         case 'ArrowLeft':
             if (isCellEmpty(data.field, data.width, data.height, data.heroX - 1, data.heroY)) {
                 data.heroX -= 1;
-                if (data.heroX < (data.width - consts.INIT_SIGHT - 2)) {
-                    window.scrollBy(-data.cellSize, 0);
-                }
+                isMoved = true;
             }
         break;
         case 'ArrowUp':
             if (isCellEmpty(data.field, data.width, data.height, data.heroX, data.heroY - 1)) {
                 data.heroY -= 1;
-                if (data.heroY < (data.height - consts.INIT_SIGHT - 2)) {
-                    window.scrollBy(0, -data.cellSize);
-                }
+                isMoved = true;
             }
         break;
         case 'ArrowDown':
             if (isCellEmpty(data.field, data.width, data.height, data.heroX, data.heroY + 1)) {
                 data.heroY += 1;
-                if (data.heroY > consts.INIT_SIGHT + 1) {
-                    window.scrollBy(0, data.cellSize);
-                }
+                isMoved = true;
             }
         break;
     }
+
+    if (isMoved) {
+        scrollToPoint(data.heroX, data.heroY, data.cellSize);
+    }
+
     // console.log(data.heroX, data.heroY);
     data.stepCtr++;
     decreaseSight(data);

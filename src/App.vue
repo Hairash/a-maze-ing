@@ -1,5 +1,5 @@
 <template>
-  <main>
+  <main @touchstart.prevent="handleScreenTap">
     <Board
       :cell-size=cellSize
       :width=width
@@ -38,22 +38,57 @@ export default {
   },
   created() {
     initLevel(this);
+  },
 
-    window.addEventListener('load', (e) => {
-      // TODO: Forbid manual scroll and hide scrollers
-      scrollToPoint(this.heroX, this.heroY, this.cellSize);
-    });
+  mounted() {
+    this.centerOnHero();
+    window.addEventListener('keydown', this.handleKeydown);
+  },
 
-    window.addEventListener('keydown', (e) => {
-      // TODO: Prevent only arrow keys actions
-      e.preventDefault();
-      processKey(e.key, this);
-    });
+  beforeUnmount() {
+    window.removeEventListener('keydown', this.handleKeydown);
   },
 
   methods: {
+    centerOnHero() {
+      this.$nextTick(() => {
+        requestAnimationFrame(() => {
+          scrollToPoint(this.heroX, this.heroY, this.cellSize);
+        });
+      });
+    },
+
+    handleKeydown(e) {
+      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+        return;
+      }
+
+      e.preventDefault();
+      processKey(e.key, this);
+    },
+
     handleClick(key) {
       processKey(key, this);
+    },
+
+    handleScreenTap(e) {
+      if (!e.touches || !e.touches.length) return;
+
+      const touch = e.touches[0];
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const x = touch.clientX;
+      const y = touch.clientY;
+
+      const distances = [
+        { key: 'ArrowLeft', value: x },
+        { key: 'ArrowRight', value: viewportWidth - x },
+        { key: 'ArrowUp', value: y },
+        { key: 'ArrowDown', value: viewportHeight - y },
+      ];
+
+      distances.sort((a, b) => a.value - b.value);
+      processKey(distances[0].key, this);
     }
   },
 }
@@ -62,4 +97,8 @@ export default {
 
 <style>
 @import './assets/base.css';
+
+main {
+  touch-action: none;
+}
 </style>
