@@ -28,6 +28,7 @@ function processCell(data) {
 }
 
 function processKey(key, data) {
+    console.log('processKey', key);
     let isMoved = false;
     switch(key) {
         case 'ArrowRight':
@@ -80,13 +81,70 @@ function isHidden(x, y, heroX, heroY, heroSight) {
     return Math.sqrt((heroX - x) * (heroX - x) + (heroY - y) * (heroY - y)) > heroSight
 }
 
+function clamp(value, min, max) {
+    return Math.min(Math.max(value, min), max);
+}
+
+function getScrollContainer() {
+    return document.body;
+}
+
+function getViewportSize() {
+    return {
+        width: document.documentElement.clientWidth,
+        height: document.documentElement.clientHeight,
+    };
+}
+
+function getBoardScrollLimits() {
+    const container = getScrollContainer();
+    const board = document.querySelector('.board');
+    const { width: viewportWidth, height: viewportHeight } = getViewportSize();
+
+    if (!board) {
+        return {
+            viewportWidth,
+            viewportHeight,
+            maxScrollX: Math.max(0, container.scrollWidth - viewportWidth),
+            maxScrollY: Math.max(0, container.scrollHeight - viewportHeight),
+        };
+    }
+
+    const boardRect = board.getBoundingClientRect();
+    const boardLeft = boardRect.left + container.scrollLeft;
+    const boardTop = boardRect.top + container.scrollTop;
+
+    return {
+        viewportWidth,
+        viewportHeight,
+        maxScrollX: Math.max(0, boardLeft + board.scrollWidth - viewportWidth),
+        maxScrollY: Math.max(0, boardTop + board.scrollHeight - viewportHeight),
+    };
+}
+
+function clampScrollToBoardBounds() {
+    const container = getScrollContainer();
+    const { maxScrollX, maxScrollY } = getBoardScrollLimits();
+    const targetX = clamp(container.scrollLeft, 0, maxScrollX);
+    const targetY = clamp(container.scrollTop, 0, maxScrollY);
+
+    if (targetX === container.scrollLeft && targetY === container.scrollTop) {
+        return;
+    }
+
+    container.scrollTo(targetX, targetY);
+}
+
 function scrollToPoint(x, y, cellSize) {
-    const scrollY = y * cellSize;
-    const scrollX = x * cellSize;
-    const indentX = (window.innerWidth - cellSize) / 2;
-    const indentY = (window.innerHeight - cellSize) / 2;
-    console.log('Scroll to:', scrollX - indentX, scrollY - indentY);
-    window.scroll(scrollX - indentX, scrollY - indentY);
+    const container = getScrollContainer();
+    const { viewportWidth, viewportHeight, maxScrollX, maxScrollY } = getBoardScrollLimits();
+    const cellCenterX = x * cellSize + cellSize / 2;
+    const cellCenterY = y * cellSize + cellSize / 2;
+    const targetX = clamp(cellCenterX - viewportWidth / 2, 0, maxScrollX);
+    const targetY = clamp(cellCenterY - viewportHeight / 2, 0, maxScrollY);
+
+    console.log('Scroll to:', targetX, targetY);
+    container.scrollTo(targetX, targetY);
 }
 
 function initLevel(data) {
@@ -101,5 +159,6 @@ export {
     processKey,
     isHidden,
     scrollToPoint,
+    clampScrollToBoardBounds,
     initLevel,
 }

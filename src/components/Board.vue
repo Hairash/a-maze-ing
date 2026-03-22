@@ -7,7 +7,6 @@
           :type=field[x][y]
           :has-hero="x === heroX && y === heroY"
           :is-hidden="isHidden(x, y, heroX, heroY, heroSight)"
-          @click="processClick($event, x, y)"
         />
       </template>
     </div>
@@ -15,11 +14,10 @@
 </template>
 
 <script setup>
-import { defineProps, defineEmits } from 'vue';
 import Cell from './Cell.vue'
 import { isHidden } from '../game/engine.js'
 
-const props = defineProps({
+defineProps({
   width: {
     type: Number,
     required: true,
@@ -49,24 +47,6 @@ const props = defineProps({
     required: true,
   }
 })
-
-const emit = defineEmits(['handleClick']);
-
-function processClick(event, x, y) {
-  console.log(x, y);
-  if (x === props.heroX - 1 && y === props.heroY) {
-    emit('handleClick', 'ArrowLeft');
-  }
-  else if (x === props.heroX + 1 && y === props.heroY) {
-    emit('handleClick', 'ArrowRight');
-  }
-  else if (x === props.heroX && y === props.heroY - 1) {
-    emit('handleClick', 'ArrowUp');
-  }
-  else if (x === props.heroX && y === props.heroY + 1) {
-    emit('handleClick', 'ArrowDown');
-  }
-}
 </script>
 
 <style scoped>
