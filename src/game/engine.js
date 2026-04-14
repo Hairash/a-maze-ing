@@ -5,8 +5,9 @@ const STORAGE_KEY = 'a-maze-ing-progress-v1'
 
 function isCellEmpty(field, width, height, x, y) {
   if (x > width - 1 || x < 0 || y > height - 1 || y < 0) return false
-  if (field[x][y] === 'wall') return false
-  return true
+  const cell = field?.[x]?.[y]
+  if (typeof cell !== 'string') return false
+  return cell !== 'wall'
 }
 
 function isFinish(x, y, field) {
@@ -56,10 +57,21 @@ function loadProgress(width, height) {
     const parsed = JSON.parse(raw)
     const hasValidField = Array.isArray(parsed.field)
       && parsed.field.length === width
-      && Array.isArray(parsed.field[0])
-      && parsed.field[0].length === height
+      && parsed.field.every((column) => Array.isArray(column) && column.length === height)
 
-    if (!hasValidField) return null
+    const hasValidHeroPosition = Number.isInteger(parsed.heroX)
+      && Number.isInteger(parsed.heroY)
+      && parsed.heroX >= 0
+      && parsed.heroX < width
+      && parsed.heroY >= 0
+      && parsed.heroY < height
+
+    const hasValidHeroSight = Number.isFinite(parsed.heroSight)
+    const hasValidStepCounter = Number.isInteger(parsed.stepCtr) && parsed.stepCtr >= 0
+
+    if (!hasValidField || !hasValidHeroPosition || !hasValidHeroSight || !hasValidStepCounter) {
+      return null
+    }
 
     return {
       field: parsed.field,
