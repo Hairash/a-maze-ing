@@ -8,6 +8,7 @@
       :hero-x=heroX
       :hero-y=heroY
       :hero-sight=heroSight
+      :hero-image=heroImage
     />
   </main>
   <teleport to="body">
@@ -53,6 +54,7 @@
 import Board from './components/Board.vue'
 import { processKey, scrollToPoint, clampScrollToBoardBounds, initLevel } from './game/engine.js'
 import * as consts from './game/const.js'
+import { randomGhostImage } from './game/const.js'
 
 export default {
   name: 'App',
@@ -77,6 +79,7 @@ export default {
       },
       movePadFrameId: null,
       showMovePad: false,
+      heroImage: randomGhostImage(),
     }
   },
   created() {
@@ -222,6 +225,7 @@ export default {
 
     moveHero(key) {
       processKey(key, this);
+      this.heroImage = randomGhostImage();
     }
   },
 }

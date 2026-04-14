@@ -5,11 +5,12 @@
         <Cell
           :size=cellSize
           :type=field[x][y]
-          :has-hero="x === heroX && y === heroY"
           :is-hidden="isHidden(x, y, heroX, heroY, heroSight)"
         />
       </template>
     </div>
+    <img class="board-hero" :src="heroImage"
+      :style="`left: ${heroX * cellSize}px; top: ${heroY * cellSize}px; width: ${cellSize}px; height: ${cellSize}px;`">
   </div>
 </template>
 
@@ -45,6 +46,10 @@ defineProps({
   heroSight: {
     type: Number,
     required: true,
+  },
+  heroImage: {
+    type: String,
+    required: true,
   }
 })
 </script>
@@ -55,5 +60,10 @@ defineProps({
 } */
 .cell_line {
   line-height: 0;
+}
+.board-hero {
+  position: absolute;
+  pointer-events: none;
+  z-index: 1;
 }
 </style>

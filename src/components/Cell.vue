@@ -8,10 +8,6 @@ defineProps({
     type: String,
     required: true,
   },
-  hasHero: {
-    type: Boolean,
-    required: true,
-  },
   isHidden: {
     type: Boolean,
     required: true,
@@ -22,7 +18,6 @@ defineProps({
 <template>
   <div :class="isHidden ? 'cell hidden' : 'cell'" :style="`width: ${size}px; height: ${size}px`">
     <img :src="`/images/${type}.png`">
-    <img class="hero" v-if="hasHero" :src="`/images/hero.png`">
   </div>
 </template>
 
@@ -41,10 +36,5 @@ defineProps({
 .cell img {
   width: 100%;
   height: 100%;
-}
-.hero {
-  position: absolute;
-  left: 0;
-  top: 0;
 }
 </style>
