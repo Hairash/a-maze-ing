@@ -1,11 +1,11 @@
 <template>
   <div class="board">
-    <div class="cell_line" :style="`width: ${cellSize * width}px`" v-for="(line, y) in field">
-      <template v-for="(cellType, x) in line">
+    <div class="cell_line" :style="`width: ${cellSize * width}px`" v-for="y in height" :key="`line-${y - 1}`">
+      <template v-for="x in width" :key="`cell-${x - 1}-${y - 1}`">
         <Cell
           :size="cellSize"
-          :type="cellType"
-          :is-hidden="isHidden(x, y, heroX, heroY, effectiveSight)"
+          :type="getCellType(x - 1, y - 1)"
+          :is-hidden="isHidden(x - 1, y - 1, heroX, heroY, effectiveSight)"
         />
       </template>
     </div>
@@ -100,6 +100,10 @@ function getTrackCellStyle(key, count) {
     backgroundImage: gradients,
     opacity: 0.8,
   }
+}
+
+function getCellType(x, y) {
+  return props.field?.[x]?.[y] ?? 'wall'
 }
 </script>
 
