@@ -21,6 +21,15 @@
     >
       Carry on
     </button>
+    <aside
+      v-if="thoughtBubble.visible && thoughtBubble.text"
+      class="thought-bubble"
+      :class="`thought-bubble--${thoughtBubble.side}`"
+      aria-live="polite"
+      aria-atomic="true"
+    >
+      {{ thoughtBubble.text }}
+    </aside>
   </main>
   <teleport to="body">
     <div v-if="showMovePad" class="move-pad" :style="movePadStyle" aria-label="Movement controls">
@@ -126,6 +135,13 @@ export default {
       showPortalDialog: false,
       mapRevealed: false,
       levelComplete: false,
+      thoughtBubble: {
+        visible: false,
+        text: '',
+        side: 'right',
+      },
+      thoughtBubbleIntervalId: null,
+      thoughtBubbleHideTimerId: null,
     }
   },
   created() {
@@ -148,6 +164,7 @@ export default {
     window.addEventListener('resize', this.scheduleMovePadPositionUpdate)
     window.addEventListener('load', this.queueCenterOnHero)
     window.addEventListener('pageshow', this.queueCenterOnHero)
+    this.startThoughtBubbleLoop()
   },
 
   beforeUnmount() {
@@ -162,6 +179,7 @@ export default {
     window.removeEventListener('resize', this.scheduleMovePadPositionUpdate)
     window.removeEventListener('load', this.queueCenterOnHero)
     window.removeEventListener('pageshow', this.queueCenterOnHero)
+    this.stopThoughtBubbleLoop()
   },
 
   watch: {
@@ -268,6 +286,196 @@ export default {
       )
     },
 
+    startThoughtBubbleLoop() {
+      this.stopThoughtBubbleLoop()
+      this.maybeShowThoughtBubble(true)
+      this.thoughtBubbleIntervalId = window.setInterval(() => {
+        this.maybeShowThoughtBubble()
+      }, 4200)
+    },
+
+    stopThoughtBubbleLoop() {
+      if (this.thoughtBubbleIntervalId !== null) {
+        window.clearInterval(this.thoughtBubbleIntervalId)
+        this.thoughtBubbleIntervalId = null
+      }
+      if (this.thoughtBubbleHideTimerId !== null) {
+        window.clearTimeout(this.thoughtBubbleHideTimerId)
+        this.thoughtBubbleHideTimerId = null
+      }
+    },
+
+    getCellAt(x, y) {
+      if (!this.field) return null
+      if (x < 0 || y < 0 || x >= this.width || y >= this.height) return null
+      return this.field?.[x]?.[y] ?? null
+    },
+
+    countNearby(type, radius = 3) {
+      let count = 0
+      for (let dx = -radius; dx <= radius; dx++) {
+        for (let dy = -radius; dy <= radius; dy++) {
+          if (dx === 0 && dy === 0) continue
+          const dist = Math.sqrt(dx * dx + dy * dy)
+          if (dist > radius) continue
+          if (this.getCellAt(this.heroX + dx, this.heroY + dy) === type) {
+            count++
+          }
+        }
+      }
+      return count
+    },
+
+    countOpenNeighbours() {
+      const offsets = [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ]
+      return offsets.reduce((acc, [dx, dy]) => {
+        const type = this.getCellAt(this.heroX + dx, this.heroY + dy)
+        return type && type !== 'wall' ? acc + 1 : acc
+      }, 0)
+    },
+
+    getThoughtCandidates() {
+      const candidates = []
+      const currentCell = this.getCellAt(this.heroX, this.heroY)
+      const currentVisits = this.soulTrack?.[`${this.heroX},${this.heroY}`] ?? 1
+      const nearbyLamps = this.countNearby('lamp', Math.max(2, Math.ceil(this.heroSight)))
+      const nearbyFinish = this.countNearby('finish', Math.max(2, Math.ceil(this.heroSight)))
+      const nearbyWalls = this.countNearby('wall', 2)
+      const openNeighbours = this.countOpenNeighbours()
+      const sightDropSoon = this.stepCtr > 0 && this.stepCtr % 20 >= 17
+
+      if (this.levelComplete) {
+        return [
+          'Did I win, or just delayed my regrets?',
+          'Another portal. Another excuse to keep wandering.',
+          'If only closure felt less temporary.',
+        ]
+      }
+
+      if (this.mapRevealed) {
+        return [
+          'So many paths… I blamed fate too quickly.',
+          'From above, my panic looks almost artistic.',
+          'I called it chaos. It was mostly me.',
+        ]
+      }
+
+      if (this.heroSight <= 1.5) {
+        candidates.push(
+          'It is so dark around… just like my confidence.',
+          'One step of vision, ten steps of doubt.',
+          'I mocked caution. Now darkness mocks me back.',
+        )
+      } else if (this.heroSight <= 3) {
+        candidates.push(
+          'I can see a little, panic a lot.',
+          'Half-blind, fully dramatic.',
+          'My pride said “rush.” My eyes said “please no.”',
+        )
+      }
+
+      if (sightDropSoon) {
+        candidates.push(
+          'The light is thinning. Like my patience.',
+          'I keep wasting moves like I have endless sight.',
+          'Another few steps and shadows will own me.',
+        )
+      }
+
+      if (currentCell === 'lamp') {
+        candidates.push(
+          'Warm light, cold conscience.',
+          'A lamp! I pretend this was the plan all along.',
+          'Borrowed light, borrowed bravery.',
+        )
+      } else if (nearbyLamps > 0) {
+        candidates.push(
+          'I sense a lamp nearby… hope with a power bill.',
+          'There is light close. Try not to fumble it.',
+          'I am one good decision away from seeing again.',
+        )
+      }
+
+      if (nearbyFinish > 0) {
+        candidates.push(
+          'I feel the exit. Why am I suddenly afraid of success?',
+          'The finish is close, and so is my self-sabotage.',
+          'One last push. Or one classic detour.',
+        )
+      }
+
+      if (openNeighbours <= 1) {
+        candidates.push(
+          'Dead end. Much like my overconfidence.',
+          'Cornered by geometry and my own choices.',
+          'I keep choosing the path that chooses me back.',
+        )
+      } else if (nearbyWalls >= 9) {
+        candidates.push(
+          'Too many walls, not enough wisdom.',
+          'The maze and I both specialize in resistance.',
+          'So many barriers. Most of them internal.',
+        )
+      }
+
+      if (currentVisits >= 4) {
+        candidates.push(
+          'Back here again. Nostalgia is just bad navigation.',
+          'I call it thoroughness. It is definitely looping.',
+          'If repetition is mastery, I am a grandmaster of getting lost.',
+        )
+      }
+
+      if (this.stepCtr > 0 && this.stepCtr % 12 === 0) {
+        candidates.push(
+          'Twelve more steps and still negotiating with my fears.',
+          'I measure progress in footsteps and excuses.',
+          'Every move forward drags one old flaw behind.',
+        )
+      }
+
+      if (candidates.length === 0) {
+        candidates.push(
+          'Quiet maze. Loud thoughts.',
+          'I am brave in public, hesitant in corridors.',
+          'Some ghosts chase me. Most are mine.',
+        )
+      }
+
+      return candidates
+    },
+
+    maybeShowThoughtBubble(force = false) {
+      if (!this.field) return
+      if (!force && Math.random() < 0.34) {
+        this.thoughtBubble.visible = false
+        return
+      }
+
+      const candidates = this.getThoughtCandidates()
+      const chosen = candidates[Math.floor(Math.random() * candidates.length)]
+      const side = this.heroX < this.width / 2 ? 'right' : 'left'
+
+      this.thoughtBubble = {
+        visible: true,
+        text: chosen,
+        side,
+      }
+
+      if (this.thoughtBubbleHideTimerId !== null) {
+        window.clearTimeout(this.thoughtBubbleHideTimerId)
+      }
+
+      this.thoughtBubbleHideTimerId = window.setTimeout(() => {
+        this.thoughtBubble.visible = false
+      }, 3600)
+    },
+
     handleKeydown(e) {
       if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
         return
@@ -282,6 +490,7 @@ export default {
 
       const result = processKey(key, this)
       this.heroImage = randomGhostImage()
+      this.maybeShowThoughtBubble()
 
       if (result.reachedFinish) {
         this.finishLevel()
@@ -294,12 +503,14 @@ export default {
       this.heroSight = -1
       setTimeout(() => {
         this.showPortalDialog = true
+        this.maybeShowThoughtBubble(true)
       }, consts.CELL_HIDE_DELAY)
     },
 
     revealMap() {
       this.showPortalDialog = false
       this.mapRevealed = true
+      this.maybeShowThoughtBubble(true)
       this.$nextTick(() => {
         this.clampScrollPosition()
       })
@@ -313,6 +524,8 @@ export default {
       this.heroImage = randomGhostImage()
       this.updateMovePadVisibility()
       this.queueCenterOnHero()
+      this.thoughtBubble.visible = false
+      this.maybeShowThoughtBubble(true)
     },
   },
 }
@@ -342,6 +555,66 @@ main {
   color: #e8f5ff;
   font-weight: 600;
   backdrop-filter: blur(2px);
+}
+
+.thought-bubble {
+  position: fixed;
+  top: clamp(16px, 8vh, 68px);
+  z-index: 8000;
+  width: min(280px, 36vw);
+  padding: 14px 18px;
+  border: 2px solid rgba(0, 0, 0, 0.92);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.62);
+  color: rgba(0, 0, 0, 0.94);
+  font-size: 0.95rem;
+  font-style: italic;
+  line-height: 1.35;
+  box-shadow: 0 5px 16px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(1px);
+  pointer-events: none;
+}
+
+.thought-bubble::before,
+.thought-bubble::after {
+  content: '';
+  position: absolute;
+  bottom: -18px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid rgba(0, 0, 0, 0.92);
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.thought-bubble::after {
+  bottom: -31px;
+  width: 8px;
+  height: 8px;
+}
+
+.thought-bubble--right {
+  right: clamp(12px, 2vw, 28px);
+}
+
+.thought-bubble--right::before {
+  right: 26px;
+}
+
+.thought-bubble--right::after {
+  right: 14px;
+}
+
+.thought-bubble--left {
+  left: clamp(12px, 2vw, 28px);
+}
+
+.thought-bubble--left::before {
+  left: 26px;
+}
+
+.thought-bubble--left::after {
+  left: 14px;
 }
 
 .move-pad {
