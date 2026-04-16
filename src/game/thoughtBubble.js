@@ -166,6 +166,23 @@ export function onMapRevealed(data) {
   tryFireGroup(data, GROUPS.MAP_REVEALED)
 }
 
+export function hideBubble(data, id) {
+  return hideBubbleById(data, id)
+}
+
+export function hideOldestBubble(data) {
+  if (data.thoughtBubbles.length === 0) return false
+  const oldestBubble = data.thoughtBubbles.reduce((oldest, bubble) => {
+    if (!oldest) return bubble
+    if (bubble.moveAtShow !== oldest.moveAtShow) {
+      return bubble.moveAtShow < oldest.moveAtShow ? bubble : oldest
+    }
+    return bubble.id < oldest.id ? bubble : oldest
+  }, null)
+  if (!oldestBubble) return false
+  return hideBubbleById(data, oldestBubble.id)
+}
+
 // ============================================================
 // GROUP FIRING + COOLDOWN
 // ============================================================
@@ -301,10 +318,11 @@ function showBubble(data, candidates, group) {
 
 function hideBubbleById(data, id) {
   const idx = data.thoughtBubbles.findIndex((b) => b.id === id)
-  if (idx === -1) return
+  if (idx === -1) return false
   const bubble = data.thoughtBubbles[idx]
   if (bubble.hideTimerId !== null) window.clearTimeout(bubble.hideTimerId)
   data.thoughtBubbles.splice(idx, 1)
+  return true
 }
 
 function expireBubblesByMoves(data) {
