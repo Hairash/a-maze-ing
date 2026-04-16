@@ -130,6 +130,7 @@ export default {
       levelComplete: false,
       carryOnBlink: false,
       carryOnBlinkTimerId: null,
+      bubblePlacementById: {},
       ...initialThoughtBubbleState(),
     }
   },
@@ -189,40 +190,18 @@ export default {
       return Math.max(16, Math.min(consts.CELL_SIZE, Math.floor(shorter / sightDiameter)))
     },
     bubbleStylesById() {
-      const viewportRect = {
-        left: 0,
-        top: 0,
-        right: this.viewportWidth,
-        bottom: this.viewportHeight,
-      }
-      const blockedRects = []
-      const heroRect = this.getHeroViewportRect()
-      if (heroRect) blockedRects.push(heroRect)
-      blockedRects.push(...this.getImportantObjectRects())
-
-      const movePadRect = this.getMovePadViewportRect()
-      if (movePadRect) blockedRects.push(movePadRect)
-
       const placements = {}
-      const bubbleRects = []
       for (const bubble of this.thoughtBubbles) {
-        const size = this.computeBubbleSize(bubble.text)
-        const placement = this.pickBubblePlacement(
-          bubble,
-          size,
-          bubbleRects,
-          blockedRects,
-          viewportRect,
-          movePadRect,
-        )
-        bubbleRects.push(placement.rect)
+        const placement = this.bubblePlacementById[bubble.id]
+        const size = placement?.size ?? this.computeBubbleSize(bubble.text)
+        const rect = placement?.rect ?? { left: 8, top: 8 }
         placements[bubble.id] = {
           width: `${Math.round(size.width)}px`,
           height: `${Math.round(size.height)}px`,
-          left: `${Math.round(placement.rect.left)}px`,
-          top: `${Math.round(placement.rect.top)}px`,
-          '--bubble-flip-x': placement.flipX ? -1 : 1,
-          '--bubble-flip-y': placement.flipY ? -1 : 1,
+          left: `${Math.round(rect.left)}px`,
+          top: `${Math.round(rect.top)}px`,
+          '--bubble-flip-x': placement?.flipX ? -1 : 1,
+          '--bubble-flip-y': placement?.flipY ? -1 : 1,
         }
       }
       return placements
@@ -246,6 +225,13 @@ export default {
         document.body.removeEventListener('scroll', this.resetCarryOnBlinkTimer)
         window.removeEventListener('pointerdown', this.resetCarryOnBlinkTimer)
       }
+    },
+    thoughtBubbles: {
+      handler() {
+        this.reconcileBubblePlacements()
+      },
+      deep: true,
+      immediate: true,
     },
   },
 
@@ -323,6 +309,14 @@ export default {
       }
     },
 
+    getBubbleCornerSequence(preferredCorner) {
+      const isMobile = this.viewportWidth <= 768
+      const corners = ['top-right', 'top-left', 'bottom-left', 'bottom-right']
+      const filtered = isMobile ? corners.filter((corner) => corner !== 'bottom-right') : corners
+      if (!preferredCorner || !filtered.includes(preferredCorner)) return filtered
+      return [preferredCorner, ...filtered.filter((corner) => corner !== preferredCorner)]
+    },
+
     computeBubbleSize(text) {
       const vw = this.viewportWidth
       const baseMaxWidth = Math.min(340, Math.max(220, vw * 0.35))
@@ -333,37 +327,51 @@ export default {
       return { width, height }
     },
 
-    buildCandidateRects(size, bubble) {
+    buildCandidateRects(size, preferredCorner) {
       const margin = 8
+      const stackGap = 16
       const maxX = Math.max(margin, this.viewportWidth - size.width - margin)
       const maxY = Math.max(margin, this.viewportHeight - size.height - margin)
-      const seed = (bubble.id * 9301 + this.thoughtMoveCount * 49297) % 233280
-      const jitterX = ((seed % 1000) / 1000 - 0.5) * 28
-      const jitterY = (((seed * 7) % 1000) / 1000 - 0.5) * 28
+      const corners = this.getBubbleCornerSequence(preferredCorner)
+      const variants = []
 
-      const anchorPoints = [
-        [margin, margin],
-        [maxX, margin],
-        [margin, maxY],
-        [maxX, maxY],
-        [Math.max(margin, (this.viewportWidth - size.width) / 2), margin],
-        [Math.max(margin, (this.viewportWidth - size.width) / 2), maxY],
-      ]
-
-      return anchorPoints.map(([x, y], i) => {
-        const spread = i < 4 ? 1 : 0.5
-        const left = Math.max(margin, Math.min(maxX, x + jitterX * spread))
-        const top = Math.max(margin, Math.min(maxY, y + jitterY * spread))
-        return {
-          left,
-          top,
-          right: left + size.width,
-          bottom: top + size.height,
+      const createRect = (corner, offsetIndex) => {
+        const inward = offsetIndex * (size.height + stackGap)
+        let left = margin
+        let top = margin
+        if (corner === 'top-right') {
+          left = maxX
+          top = Math.min(maxY, margin + inward)
+        } else if (corner === 'top-left') {
+          left = margin
+          top = Math.min(maxY, margin + inward)
+        } else if (corner === 'bottom-right') {
+          left = maxX
+          top = Math.max(margin, maxY - inward)
+        } else {
+          left = margin
+          top = Math.max(margin, maxY - inward)
         }
-      })
+        return {
+          corner,
+          rect: {
+            left,
+            top,
+            right: left + size.width,
+            bottom: top + size.height,
+          },
+        }
+      }
+
+      for (const corner of corners) {
+        variants.push(createRect(corner, 0))
+        variants.push(createRect(corner, 1))
+      }
+
+      return variants
     },
 
-    scoreCandidate(candidateRect, placedRects, blockedRects, movePadRect) {
+    scoreCandidate(candidateRect, placedRects, blockedRects, movePadRect, heroRect) {
       let score = 0
       // Highest priority: avoid move pad.
       if (movePadRect) score += this.getOverlapArea(candidateRect, movePadRect) * 10000
@@ -374,34 +382,103 @@ export default {
         const importance = rect.importance ?? 3
         score += this.getOverlapArea(candidateRect, rect) * importance * 900
       }
+
+      // Prefer bubbles further from hero to keep visual space around the character.
+      if (heroRect) {
+        const heroCenterX = (heroRect.left + heroRect.right) / 2
+        const heroCenterY = (heroRect.top + heroRect.bottom) / 2
+        const bubbleCenterX = (candidateRect.left + candidateRect.right) / 2
+        const bubbleCenterY = (candidateRect.top + candidateRect.bottom) / 2
+        const distance = Math.hypot(bubbleCenterX - heroCenterX, bubbleCenterY - heroCenterY)
+        score -= distance * 3
+      }
       return score
     },
 
-    pickBubblePlacement(bubble, size, placedRects, blockedRects, viewportRect, movePadRect) {
-      const candidates = this.buildCandidateRects(size, bubble)
-      let bestRect = candidates[0]
+    pickBubblePlacement(size, slot, placedRects, blockedRects, viewportRect, movePadRect) {
+      const preferredCorner = slot ?? 'top-right'
+      const candidates = this.buildCandidateRects(size, preferredCorner)
+      let bestCandidate = candidates[0]
       let bestScore = Number.POSITIVE_INFINITY
+      const heroRect = this.getHeroViewportRect()
 
       for (const candidate of candidates) {
-        if (!this.rectsOverlap(candidate, viewportRect)) continue
-        const score = this.scoreCandidate(candidate, placedRects, blockedRects, movePadRect)
+        const candidateRect = candidate.rect
+        if (!this.rectsOverlap(candidateRect, viewportRect)) continue
+        const score = this.scoreCandidate(
+          candidateRect,
+          placedRects,
+          blockedRects,
+          movePadRect,
+          heroRect,
+        )
         if (score < bestScore) {
           bestScore = score
-          bestRect = candidate
+          bestCandidate = candidate
         }
       }
 
-      const heroRect = this.getHeroViewportRect()
-      const heroCenterX = heroRect ? (heroRect.left + heroRect.right) / 2 : this.viewportWidth / 2
-      const heroCenterY = heroRect ? (heroRect.top + heroRect.bottom) / 2 : this.viewportHeight / 2
-      const bubbleCenterX = (bestRect.left + bestRect.right) / 2
-      const bubbleCenterY = (bestRect.top + bestRect.bottom) / 2
+      const flipByCorner = {
+        'top-right': { flipX: false, flipY: false },
+        'top-left': { flipX: true, flipY: false },
+        'bottom-right': { flipX: false, flipY: true },
+        'bottom-left': { flipX: true, flipY: true },
+      }
+      const flip = flipByCorner[bestCandidate.corner] ?? flipByCorner['top-right']
 
       return {
-        rect: bestRect,
-        flipX: heroCenterX < bubbleCenterX,
-        flipY: heroCenterY < bubbleCenterY,
+        rect: bestCandidate.rect,
+        corner: bestCandidate.corner,
+        flipX: flip.flipX,
+        flipY: flip.flipY,
       }
+    },
+
+    reconcileBubblePlacements() {
+      const activeIds = new Set(this.thoughtBubbles.map((bubble) => bubble.id))
+      const nextPlacements = {}
+      for (const [id, placement] of Object.entries(this.bubblePlacementById)) {
+        const numericId = Number(id)
+        if (activeIds.has(numericId)) nextPlacements[numericId] = placement
+      }
+
+      const viewportRect = {
+        left: 0,
+        top: 0,
+        right: this.viewportWidth,
+        bottom: this.viewportHeight,
+      }
+      const blockedRects = []
+      const heroRect = this.getHeroViewportRect()
+      if (heroRect) blockedRects.push(heroRect)
+      blockedRects.push(...this.getImportantObjectRects())
+      const movePadRect = this.getMovePadViewportRect()
+      if (movePadRect) blockedRects.push(movePadRect)
+
+      const placedRects = []
+      for (const bubble of this.thoughtBubbles) {
+        const cached = nextPlacements[bubble.id]
+        if (cached?.rect) {
+          placedRects.push(cached.rect)
+          continue
+        }
+        const size = this.computeBubbleSize(bubble.text)
+        const placement = this.pickBubblePlacement(
+          size,
+          bubble.slot,
+          placedRects,
+          blockedRects,
+          viewportRect,
+          movePadRect,
+        )
+        placedRects.push(placement.rect)
+        nextPlacements[bubble.id] = {
+          ...placement,
+          size,
+        }
+      }
+
+      this.bubblePlacementById = nextPlacements
     },
 
     resetCarryOnBlinkTimer() {
@@ -425,6 +502,7 @@ export default {
     updateViewportSize() {
       this.viewportWidth = window.innerWidth
       this.viewportHeight = window.innerHeight
+      this.reconcileBubblePlacements()
     },
 
     centerOnHero() {
