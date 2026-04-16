@@ -1,6 +1,7 @@
 <template>
   <main :class="{ 'main--revealed': mapRevealed }">
     <Board
+      ref="board"
       :cell-size="cellSize"
       :width="width"
       :height="height"
@@ -26,7 +27,7 @@
       v-for="bubble in thoughtBubbles"
       :key="bubble.id"
       class="thought-bubble"
-      :class="`thought-bubble--${bubble.slot}`"
+      :style="bubbleStylesById[bubble.id]"
       aria-live="polite"
       aria-atomic="true"
     >
@@ -187,6 +188,45 @@ export default {
       const shorter = Math.min(this.viewportWidth, this.viewportHeight)
       return Math.max(16, Math.min(consts.CELL_SIZE, Math.floor(shorter / sightDiameter)))
     },
+    bubbleStylesById() {
+      const viewportRect = {
+        left: 0,
+        top: 0,
+        right: this.viewportWidth,
+        bottom: this.viewportHeight,
+      }
+      const blockedRects = []
+      const heroRect = this.getHeroViewportRect()
+      if (heroRect) blockedRects.push(heroRect)
+      blockedRects.push(...this.getImportantObjectRects())
+
+      const movePadRect = this.getMovePadViewportRect()
+      if (movePadRect) blockedRects.push(movePadRect)
+
+      const placements = {}
+      const bubbleRects = []
+      for (const bubble of this.thoughtBubbles) {
+        const size = this.computeBubbleSize(bubble.text)
+        const placement = this.pickBubblePlacement(
+          bubble,
+          size,
+          bubbleRects,
+          blockedRects,
+          viewportRect,
+          movePadRect,
+        )
+        bubbleRects.push(placement.rect)
+        placements[bubble.id] = {
+          width: `${Math.round(size.width)}px`,
+          height: `${Math.round(size.height)}px`,
+          left: `${Math.round(placement.rect.left)}px`,
+          top: `${Math.round(placement.rect.top)}px`,
+          '--bubble-flip-x': placement.flipX ? -1 : 1,
+          '--bubble-flip-y': placement.flipY ? -1 : 1,
+        }
+      }
+      return placements
+    },
   },
 
   watch: {
@@ -210,6 +250,160 @@ export default {
   },
 
   methods: {
+    rectsOverlap(a, b) {
+      return !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom)
+    },
+
+    getOverlapArea(a, b) {
+      if (!this.rectsOverlap(a, b)) return 0
+      const overlapWidth = Math.min(a.right, b.right) - Math.max(a.left, b.left)
+      const overlapHeight = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top)
+      return Math.max(0, overlapWidth) * Math.max(0, overlapHeight)
+    },
+
+    getBoardElement() {
+      return this.$refs.board?.$el ?? null
+    },
+
+    getHeroViewportRect() {
+      const board = this.getBoardElement()
+      if (!board) return null
+      const boardRect = board.getBoundingClientRect()
+      const size = this.cellSize
+      return {
+        left: boardRect.left + this.heroX * size,
+        top: boardRect.top + this.heroY * size,
+        right: boardRect.left + (this.heroX + 1) * size,
+        bottom: boardRect.top + (this.heroY + 1) * size,
+      }
+    },
+
+    getImportantObjectRects() {
+      const board = this.getBoardElement()
+      if (!board || !this.field) return []
+      const boardRect = board.getBoundingClientRect()
+      const viewport = {
+        left: 0,
+        top: 0,
+        right: this.viewportWidth,
+        bottom: this.viewportHeight,
+      }
+      const rects = []
+      for (let x = 0; x < this.width; x++) {
+        for (let y = 0; y < this.height; y++) {
+          const type = this.field?.[x]?.[y]
+          if (type !== 'finish' && type !== 'lamp') continue
+          const rect = {
+            left: boardRect.left + x * this.cellSize,
+            top: boardRect.top + y * this.cellSize,
+            right: boardRect.left + (x + 1) * this.cellSize,
+            bottom: boardRect.top + (y + 1) * this.cellSize,
+            importance: type === 'finish' ? 2 : 1,
+          }
+          if (this.rectsOverlap(rect, viewport)) rects.push(rect)
+        }
+      }
+      return rects
+    },
+
+    getMovePadViewportRect() {
+      if (!this.showMovePad) return null
+      const padSize = 56 * 3 + 8 * 2
+      const scrollLeft = document.body.scrollLeft
+      const scrollTop = document.body.scrollTop
+      const left = parseFloat(this.movePadStyle.left) - scrollLeft
+      const top = parseFloat(this.movePadStyle.top) - scrollTop
+      if (Number.isNaN(left) || Number.isNaN(top)) return null
+      return {
+        left,
+        top,
+        right: left + padSize,
+        bottom: top + padSize,
+        importance: 5,
+      }
+    },
+
+    computeBubbleSize(text) {
+      const vw = this.viewportWidth
+      const baseMaxWidth = Math.min(340, Math.max(220, vw * 0.35))
+      const baseMinWidth = Math.min(220, Math.max(170, vw * 0.24))
+      const len = (text ?? '').length
+      const width = Math.max(baseMinWidth, Math.min(baseMaxWidth, 170 + len * 2.2))
+      const height = width / (1085 / 768)
+      return { width, height }
+    },
+
+    buildCandidateRects(size, bubble) {
+      const margin = 8
+      const maxX = Math.max(margin, this.viewportWidth - size.width - margin)
+      const maxY = Math.max(margin, this.viewportHeight - size.height - margin)
+      const seed = (bubble.id * 9301 + this.thoughtMoveCount * 49297) % 233280
+      const jitterX = ((seed % 1000) / 1000 - 0.5) * 28
+      const jitterY = (((seed * 7) % 1000) / 1000 - 0.5) * 28
+
+      const anchorPoints = [
+        [margin, margin],
+        [maxX, margin],
+        [margin, maxY],
+        [maxX, maxY],
+        [Math.max(margin, (this.viewportWidth - size.width) / 2), margin],
+        [Math.max(margin, (this.viewportWidth - size.width) / 2), maxY],
+      ]
+
+      return anchorPoints.map(([x, y], i) => {
+        const spread = i < 4 ? 1 : 0.5
+        const left = Math.max(margin, Math.min(maxX, x + jitterX * spread))
+        const top = Math.max(margin, Math.min(maxY, y + jitterY * spread))
+        return {
+          left,
+          top,
+          right: left + size.width,
+          bottom: top + size.height,
+        }
+      })
+    },
+
+    scoreCandidate(candidateRect, placedRects, blockedRects, movePadRect) {
+      let score = 0
+      // Highest priority: avoid move pad.
+      if (movePadRect) score += this.getOverlapArea(candidateRect, movePadRect) * 10000
+
+      // High priority: avoid overlap with existing bubbles and hero.
+      for (const rect of placedRects) score += this.getOverlapArea(candidateRect, rect) * 4000
+      for (const rect of blockedRects) {
+        const importance = rect.importance ?? 3
+        score += this.getOverlapArea(candidateRect, rect) * importance * 900
+      }
+      return score
+    },
+
+    pickBubblePlacement(bubble, size, placedRects, blockedRects, viewportRect, movePadRect) {
+      const candidates = this.buildCandidateRects(size, bubble)
+      let bestRect = candidates[0]
+      let bestScore = Number.POSITIVE_INFINITY
+
+      for (const candidate of candidates) {
+        if (!this.rectsOverlap(candidate, viewportRect)) continue
+        const score = this.scoreCandidate(candidate, placedRects, blockedRects, movePadRect)
+        if (score < bestScore) {
+          bestScore = score
+          bestRect = candidate
+        }
+      }
+
+      const heroRect = this.getHeroViewportRect()
+      const heroCenterX = heroRect ? (heroRect.left + heroRect.right) / 2 : this.viewportWidth / 2
+      const heroCenterY = heroRect ? (heroRect.top + heroRect.bottom) / 2 : this.viewportHeight / 2
+      const bubbleCenterX = (bestRect.left + bestRect.right) / 2
+      const bubbleCenterY = (bestRect.top + bestRect.bottom) / 2
+
+      return {
+        rect: bestRect,
+        flipX: heroCenterX < bubbleCenterX,
+        flipY: heroCenterY < bubbleCenterY,
+      }
+    },
+
     resetCarryOnBlinkTimer() {
       this.carryOnBlink = false
       if (this.carryOnBlinkTimerId !== null) {
@@ -421,45 +615,38 @@ main {
 .thought-bubble {
   position: fixed;
   z-index: 8000;
-  width: min(280px, 36vw);
-  background: url('/images/thought.png') no-repeat center / 100% 100%;
+  --bubble-flip-x: 1;
+  --bubble-flip-y: 1;
   pointer-events: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  aspect-ratio: 1085 / 768;
+  padding: 0;
+}
+
+.thought-bubble::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: url('/images/thought.png') no-repeat center / 100% 100%;
+  transform: scaleX(var(--bubble-flip-x)) scaleY(var(--bubble-flip-y));
+  transform-origin: center;
+  z-index: 0;
 }
 
 .thought-bubble__text {
+  position: relative;
+  z-index: 1;
   display: block;
-  padding: 18% 16% 28% 16%;
+  width: 100%;
+  padding: 16% 15% 27% 15%;
+  box-sizing: border-box;
   color: rgba(0, 0, 0, 0.9);
-  font-size: 0.85rem;
+  font-size: clamp(0.76rem, 1.6vw, 0.92rem);
   font-style: italic;
-  line-height: 1.35;
+  line-height: 1.3;
   text-align: center;
-}
-
-/* Vertical anchoring */
-.thought-bubble--top-right,
-.thought-bubble--top-left {
-  top: clamp(8px, 4vh, 40px);
-}
-
-.thought-bubble--bottom-right,
-.thought-bubble--bottom-left {
-  bottom: clamp(8px, 4vh, 40px);
-}
-
-/* Horizontal anchoring */
-.thought-bubble--top-right,
-.thought-bubble--bottom-right {
-  right: clamp(12px, 2vw, 28px);
-}
-
-.thought-bubble--top-left,
-.thought-bubble--bottom-left {
-  left: clamp(12px, 2vw, 28px);
+  overflow-wrap: anywhere;
 }
 
 .move-pad {
