@@ -5,7 +5,8 @@
         <Cell
           :size="cellSize"
           :type="getCellType(x - 1, y - 1)"
-          :is-hidden="isHidden(x - 1, y - 1, heroX, heroY, effectiveSight)"
+          :is-hidden="isCellHidden(x - 1, y - 1)"
+          :transition-delay-ms="getCellHideDelayMs(x - 1, y - 1)"
           :activated="x - 1 === heroX && y - 1 === heroY"
         />
       </template>
@@ -17,6 +18,30 @@
       :height="cellSize * height"
       aria-hidden="true"
     >
+      <g
+        v-if="trailStartDot"
+        class="trail-start-cross"
+        :transform="`translate(${trailStartDot.x}, ${trailStartDot.y})`"
+      >
+        <line
+          :x1="-startCrossHalfSize"
+          :y1="-startCrossHalfSize"
+          :x2="startCrossHalfSize"
+          :y2="startCrossHalfSize"
+          :stroke-width="startCrossStroke"
+          stroke="rgba(255, 72, 122, 0.95)"
+          stroke-linecap="round"
+        />
+        <line
+          :x1="-startCrossHalfSize"
+          :y1="startCrossHalfSize"
+          :x2="startCrossHalfSize"
+          :y2="-startCrossHalfSize"
+          :stroke-width="startCrossStroke"
+          stroke="rgba(255, 72, 122, 0.95)"
+          stroke-linecap="round"
+        />
+      </g>
       <circle
         v-for="(dot, i) in trailDots"
         :key="i"
@@ -85,6 +110,11 @@ const props = defineProps({
     required: false,
     default: false,
   },
+  edgeHideSequenceActive: {
+    type: Boolean,
+    required: false,
+    default: false,
+  },
 })
 
 const effectiveSight = computed(() => (props.revealMap ? Number.POSITIVE_INFINITY : props.heroSight))
@@ -95,9 +125,31 @@ const trailDots = computed(() => {
 })
 
 const dotRadius = computed(() => Math.max(1.2, props.cellSize / 20))
+const trailStartDot = computed(() => trailDots.value[0] ?? null)
+const startCrossHalfSize = computed(() => Math.max(5, props.cellSize * 0.22))
+const startCrossStroke = computed(() => Math.max(2, props.cellSize * 0.1))
 
 function getCellType(x, y) {
   return props.field?.[x]?.[y] ?? 'wall'
+}
+
+function getEdgeRank(x, y) {
+  const left = x
+  const right = props.width - 1 - x
+  const top = y
+  const bottom = props.height - 1 - y
+  return Math.min(left, right, top, bottom)
+}
+
+function getCellHideDelayMs(x, y) {
+  if (!props.edgeHideSequenceActive) return 0
+  const stepDelayMs = 24
+  return getEdgeRank(x, y) * stepDelayMs
+}
+
+function isCellHidden(x, y) {
+  if (props.edgeHideSequenceActive) return true
+  return isHidden(x, y, props.heroX, props.heroY, effectiveSight.value)
 }
 </script>
 
@@ -122,5 +174,9 @@ function getCellType(x, y) {
   top: 0;
   pointer-events: none;
   z-index: 2;
+}
+
+.trail-start-cross {
+  filter: drop-shadow(0 0 6px rgba(255, 72, 122, 0.7));
 }
 </style>

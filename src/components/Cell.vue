@@ -17,11 +17,23 @@ defineProps({
     required: false,
     default: false,
   },
+  transitionDelayMs: {
+    type: Number,
+    required: false,
+    default: 0,
+  },
 })
 </script>
 
 <template>
-  <div :class="isHidden ? 'cell hidden' : 'cell'" :style="`width: ${size}px; height: ${size}px`">
+  <div
+    :class="isHidden ? 'cell hidden' : 'cell'"
+    :style="{
+      width: `${size}px`,
+      height: `${size}px`,
+      transitionDelay: `${Math.max(0, transitionDelayMs)}ms`,
+    }"
+  >
     <span v-if="type === 'lamp'" class="lamp-glow"></span>
     <img v-if="type === 'lamp' && activated" src="/images/glow.png">
     <img v-else-if="type !== 'empty'" :src="`/images/${type}.png`">
