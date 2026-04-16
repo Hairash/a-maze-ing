@@ -2,6 +2,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   initialThoughtBubbleState,
+  hideBubble,
+  hideOldestBubble,
   onMove,
   onLevelComplete,
   onMapRevealed,
@@ -270,5 +272,52 @@ describe('bubble expiry by moves', () => {
 
     onMove(data) // moveCount becomes 3, 3 - 0 >= 3 → expire
     expect(data.thoughtBubbles.find((b) => b.id === 99)).toBeUndefined()
+  })
+})
+
+describe('manual bubble dismiss', () => {
+  it('hides bubble by id and clears its timer', () => {
+    const data = makeData()
+    const timerId = window.setTimeout(() => {}, 5000)
+    data.thoughtBubbles = [{
+      id: 5,
+      text: 'test',
+      slot: 'top-right',
+      group: 'test',
+      hideTimerId: timerId,
+      moveAtShow: 0,
+      maxMoves: 20,
+    }]
+
+    expect(hideBubble(data, 5)).toBe(true)
+    expect(data.thoughtBubbles).toHaveLength(0)
+  })
+
+  it('hides oldest displayed bubble', () => {
+    const data = makeData()
+    data.thoughtBubbles = [
+      {
+        id: 2,
+        text: 'newer',
+        slot: 'top-right',
+        group: 'test',
+        hideTimerId: null,
+        moveAtShow: 12,
+        maxMoves: 20,
+      },
+      {
+        id: 1,
+        text: 'older',
+        slot: 'top-left',
+        group: 'test',
+        hideTimerId: null,
+        moveAtShow: 3,
+        maxMoves: 20,
+      },
+    ]
+
+    expect(hideOldestBubble(data)).toBe(true)
+    expect(data.thoughtBubbles).toHaveLength(1)
+    expect(data.thoughtBubbles[0].id).toBe(2)
   })
 })

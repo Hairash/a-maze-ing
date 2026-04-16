@@ -30,6 +30,7 @@
       :style="bubbleStylesById[bubble.id]"
       aria-live="polite"
       aria-atomic="true"
+      @pointerdown.prevent.stop="dismissThoughtBubble(bubble.id)"
     >
       <span class="thought-bubble__text">{{ bubble.text }}</span>
     </aside>
@@ -93,6 +94,8 @@ import {
   startThoughtBubbleLoop,
   stopThoughtBubbleLoop,
   resetThoughtState,
+  hideBubble as hideThoughtBubble,
+  hideOldestBubble as hideOldestThoughtBubble,
   onMove as onThoughtMove,
   onLevelComplete as onThoughtLevelComplete,
   onMapRevealed as onThoughtMapRevealed,
@@ -202,6 +205,7 @@ export default {
           top: `${Math.round(rect.top)}px`,
           '--bubble-flip-x': placement?.flipX ? -1 : 1,
           '--bubble-flip-y': placement?.flipY ? -1 : 1,
+          '--bubble-text-top-extra': placement?.flipY ? '10%' : '0%',
         }
       }
       return placements
@@ -603,6 +607,12 @@ export default {
     },
 
     handleKeydown(e) {
+      if (e.key.toLowerCase() === 'x') {
+        const hidden = hideOldestThoughtBubble(this)
+        if (hidden) e.preventDefault()
+        return
+      }
+
       if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
         return
       }
@@ -652,6 +662,10 @@ export default {
       this.queueCenterOnHero()
       resetThoughtState(this)
     },
+
+    dismissThoughtBubble(id) {
+      hideThoughtBubble(this, id)
+    },
   },
 }
 </script>
@@ -695,7 +709,8 @@ main {
   z-index: 8000;
   --bubble-flip-x: 1;
   --bubble-flip-y: 1;
-  pointer-events: none;
+  --bubble-text-top-extra: 0%;
+  pointer-events: auto;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -717,7 +732,7 @@ main {
   z-index: 1;
   display: block;
   width: 100%;
-  padding: 16% 15% 27% 15%;
+  padding: calc(16% + var(--bubble-text-top-extra)) 15% calc(27% - var(--bubble-text-top-extra)) 15%;
   box-sizing: border-box;
   color: rgba(0, 0, 0, 0.9);
   font-size: clamp(0.76rem, 1.6vw, 0.92rem);
