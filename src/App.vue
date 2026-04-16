@@ -13,6 +13,7 @@
       :reveal-map="mapRevealed"
       :soul-path="soulPath"
       :show-soul-track="mapRevealed"
+      :edge-hide-sequence-active="edgeHideSequenceActive"
     />
     <button
       v-if="mapRevealed"
@@ -71,16 +72,6 @@
       </button>
     </div>
 
-    <div v-if="showPortalDialog" class="portal-dialog-backdrop">
-      <div class="portal-dialog" role="dialog" aria-modal="true" aria-label="Level complete">
-        <div class="portal-dialog__plate">
-          <h2 class="portal-dialog__title">Portal discovered</h2>
-          <p class="portal-dialog__body">Your soul remembers every step.</p>
-          <p class="portal-dialog__hint">Press OK to reveal the full map.</p>
-          <button type="button" class="brick-btn portal-dialog__ok" @click="revealMap">OK</button>
-        </div>
-      </div>
-    </div>
   </teleport>
 </template>
 
@@ -128,9 +119,10 @@ export default {
       movePadFrameId: null,
       showMovePad: false,
       heroImage: randomGhostImage(),
-      showPortalDialog: false,
       mapRevealed: false,
       levelComplete: false,
+      edgeHideSequenceActive: false,
+      edgeHideSequenceTimerId: null,
       carryOnBlink: false,
       carryOnBlinkTimerId: null,
       bubblePlacementById: {},
@@ -139,6 +131,9 @@ export default {
   },
   created() {
     initLevel(this)
+    if (this.isHeroOnPortalCell()) {
+      this.finishLevel(true)
+    }
   },
 
   mounted() {
@@ -179,6 +174,7 @@ export default {
     window.removeEventListener('pageshow', this.queueCenterOnHero)
     stopThoughtBubbleLoop(this)
     this.clearCarryOnBlinkTimer()
+    this.clearEdgeHideSequenceTimer()
     document.body.removeEventListener('scroll', this.resetCarryOnBlinkTimer)
     window.removeEventListener('pointerdown', this.resetCarryOnBlinkTimer)
   },
@@ -240,6 +236,16 @@ export default {
   },
 
   methods: {
+    isHeroOnPortalCell() {
+      return this.field?.[this.heroX]?.[this.heroY] === 'finish'
+    },
+
+    clearEdgeHideSequenceTimer() {
+      if (this.edgeHideSequenceTimerId === null) return
+      window.clearTimeout(this.edgeHideSequenceTimerId)
+      this.edgeHideSequenceTimerId = null
+    },
+
     rectsOverlap(a, b) {
       return !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom)
     },
@@ -633,18 +639,26 @@ export default {
       }
     },
 
-    finishLevel() {
+    finishLevel(isLoad = false) {
       this.levelComplete = true
       this.showMovePad = false
-      this.heroSight = -1
-      setTimeout(() => {
-        this.showPortalDialog = true
-        onThoughtLevelComplete(this)
-      }, consts.CELL_HIDE_DELAY)
+      this.edgeHideSequenceActive = true
+      onThoughtLevelComplete(this)
+      this.clearEdgeHideSequenceTimer()
+
+      const edgeLayers = Math.floor(Math.min(this.width, this.height) / 2)
+      const perLayerDelayMs = 24
+      const fadeDurationMs = 500
+      const sequenceDurationMs = edgeLayers * perLayerDelayMs + fadeDurationMs
+
+      this.edgeHideSequenceTimerId = window.setTimeout(() => {
+        this.edgeHideSequenceActive = false
+        this.edgeHideSequenceTimerId = null
+        this.revealMap()
+      }, isLoad ? Math.max(200, sequenceDurationMs * 0.5) : sequenceDurationMs)
     },
 
     revealMap() {
-      this.showPortalDialog = false
       this.mapRevealed = true
       onThoughtMapRevealed(this)
       this.$nextTick(() => {
@@ -653,7 +667,8 @@ export default {
     },
 
     carryOn() {
-      this.showPortalDialog = false
+      this.clearEdgeHideSequenceTimer()
+      this.edgeHideSequenceActive = false
       this.mapRevealed = false
       this.levelComplete = false
       initLevel(this, true)
@@ -813,52 +828,6 @@ main {
   transform: rotate(-135deg);
 }
 
-.portal-dialog-backdrop {
-  position: fixed;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  z-index: 99999;
-  background: rgba(3, 8, 18, 0.45);
-}
-
-.portal-dialog {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 14px;
-}
-
-.portal-dialog__plate {
-  width: min(90vw, 520px);
-  background: url('/images/plate.png') no-repeat center / 100% 100%;
-  aspect-ratio: 1317 / 687;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 12% 14%;
-}
-
-.portal-dialog__title {
-  color: #111;
-  font-size: clamp(1.1rem, 4vw, 1.8rem);
-  font-weight: 700;
-  margin: 0 0 0.4em;
-}
-
-.portal-dialog__body {
-  color: #333;
-  font-size: clamp(0.8rem, 2.5vw, 1rem);
-  margin: 0 0 0.3em;
-}
-
-.portal-dialog__hint {
-  color: #555;
-  font-size: clamp(0.7rem, 2vw, 0.9rem);
-  margin: 0;
-}
-
 .brick-btn {
   border: none;
   background: url('/images/brick_btn.png') no-repeat center / 100% 100%;
@@ -870,7 +839,4 @@ main {
   min-width: 120px;
 }
 
-.portal-dialog__ok {
-  margin-top: 0.6em;
-}
 </style>
