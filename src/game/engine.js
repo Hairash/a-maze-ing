@@ -36,6 +36,13 @@ function incrementSoulTrack(data, x, y) {
   data.soulTrack[key] = (data.soulTrack[key] ?? 0) + 1
 }
 
+function appendSoulPath(data, x, y) {
+  if (!Array.isArray(data.soulPath)) {
+    data.soulPath = []
+  }
+  data.soulPath.push([x, y])
+}
+
 function saveProgress(data) {
   const payload = {
     field: data.field,
@@ -44,6 +51,7 @@ function saveProgress(data) {
     heroSight: data.heroSight,
     stepCtr: data.stepCtr,
     soulTrack: data.soulTrack ?? {},
+    soulPath: Array.isArray(data.soulPath) ? data.soulPath : [],
   }
 
   localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
@@ -80,6 +88,7 @@ function loadProgress(width, height) {
       heroSight: parsed.heroSight,
       stepCtr: parsed.stepCtr,
       soulTrack: parsed.soulTrack ?? {},
+      soulPath: Array.isArray(parsed.soulPath) ? parsed.soulPath : [],
     }
   } catch {
     return null
@@ -117,6 +126,7 @@ function processKey(key, data) {
 
   if (isMoved) {
     incrementSoulTrack(data, data.heroX, data.heroY)
+    appendSoulPath(data, data.heroX, data.heroY)
     scrollToPoint(data.heroX, data.heroY, data.cellSize)
   }
 
@@ -212,6 +222,7 @@ function initLevel(data, forceNewLevel = false) {
     data.heroSight = saved.heroSight
     data.stepCtr = saved.stepCtr
     data.soulTrack = saved.soulTrack
+    data.soulPath = saved.soulPath
     return
   }
 
@@ -220,7 +231,9 @@ function initLevel(data, forceNewLevel = false) {
   data.heroSight = consts.INIT_SIGHT
   data.stepCtr = 0
   data.soulTrack = {}
+  data.soulPath = []
   incrementSoulTrack(data, data.heroX, data.heroY)
+  appendSoulPath(data, data.heroX, data.heroY)
   saveProgress(data)
 }
 

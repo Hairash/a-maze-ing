@@ -6,21 +6,26 @@
           :size="cellSize"
           :type="getCellType(x - 1, y - 1)"
           :is-hidden="isHidden(x - 1, y - 1, heroX, heroY, effectiveSight)"
+          :activated="x - 1 === heroX && y - 1 === heroY"
         />
       </template>
     </div>
-    <div
+    <svg
       v-if="showSoulTrack"
-      class="soul-track-overlay"
+      class="soul-trail-overlay"
+      :width="cellSize * width"
+      :height="cellSize * height"
       aria-hidden="true"
     >
-      <div
-        v-for="(count, key) in soulTrack"
-        :key="key"
-        class="soul-track-cell"
-        :style="getTrackCellStyle(key, count)"
-      ></div>
-    </div>
+      <circle
+        v-for="(dot, i) in trailDots"
+        :key="i"
+        :cx="dot.x"
+        :cy="dot.y"
+        :r="dotRadius"
+        fill="rgba(0, 0, 0, 0.85)"
+      />
+    </svg>
     <img class="board-hero" :src="heroImage"
       :style="`left: ${heroX * cellSize}px; top: ${heroY * cellSize}px; width: ${cellSize}px; height: ${cellSize}px;`">
   </div>
@@ -30,6 +35,7 @@
 import { computed } from 'vue'
 import Cell from './Cell.vue'
 import { isHidden } from '../game/engine.js'
+import { computeTrailDots } from '../game/soulTrail.js'
 
 const props = defineProps({
   width: {
@@ -69,10 +75,10 @@ const props = defineProps({
     required: false,
     default: false,
   },
-  soulTrack: {
-    type: Object,
+  soulPath: {
+    type: Array,
     required: false,
-    default: () => ({}),
+    default: () => [],
   },
   showSoulTrack: {
     type: Boolean,
@@ -83,24 +89,12 @@ const props = defineProps({
 
 const effectiveSight = computed(() => (props.revealMap ? Number.POSITIVE_INFINITY : props.heroSight))
 
-function getTrackCellStyle(key, count) {
-  const [x, y] = key.split(',').map(Number)
-  const lineCount = Math.min(Math.max(1, Number(count) || 1), 10)
-  const gradients = Array.from({ length: lineCount }, (_, idx) => {
-    const offset = idx * 4
-    const alpha = Math.min(0.2 + idx * 0.05, 0.75)
-    return `repeating-linear-gradient(45deg, transparent ${offset}px, rgba(153, 228, 255, ${alpha}) ${offset}px ${offset + 1.7}px, transparent ${offset + 1.7}px ${offset + 7}px)`
-  }).join(', ')
+const trailDots = computed(() => {
+  if (!props.showSoulTrack) return []
+  return computeTrailDots(props.soulPath, props.cellSize)
+})
 
-  return {
-    left: `${x * props.cellSize}px`,
-    top: `${y * props.cellSize}px`,
-    width: `${props.cellSize}px`,
-    height: `${props.cellSize}px`,
-    backgroundImage: gradients,
-    opacity: 0.8,
-  }
-}
+const dotRadius = computed(() => Math.max(1.2, props.cellSize / 20))
 
 function getCellType(x, y) {
   return props.field?.[x]?.[y] ?? 'wall'
@@ -122,16 +116,11 @@ function getCellType(x, y) {
   z-index: 3;
 }
 
-.soul-track-overlay {
+.soul-trail-overlay {
   position: absolute;
-  inset: 0;
+  left: 0;
+  top: 0;
   pointer-events: none;
   z-index: 2;
-}
-
-.soul-track-cell {
-  position: absolute;
-  border-radius: 8px;
-  mix-blend-mode: screen;
 }
 </style>

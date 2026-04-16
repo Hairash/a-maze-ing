@@ -12,12 +12,19 @@ defineProps({
     type: Boolean,
     required: true,
   },
+  activated: {
+    type: Boolean,
+    required: false,
+    default: false,
+  },
 })
 </script>
 
 <template>
   <div :class="isHidden ? 'cell hidden' : 'cell'" :style="`width: ${size}px; height: ${size}px`">
-    <img :src="`/images/${type}.png`">
+    <span v-if="type === 'lamp'" class="lamp-glow"></span>
+    <img v-if="type === 'lamp' && activated" src="/images/glow.png">
+    <img v-else-if="type !== 'empty'" :src="`/images/${type}.png`">
   </div>
 </template>
 
@@ -25,9 +32,10 @@ defineProps({
 .cell {
   width: 100px;
   height: 100px;
-  /* background-color: #115522; */
+  background-color: #ffffff;
   display: inline-block;
-  border: solid 1px;
+  vertical-align: top;
+  border: solid 1px #ddd;
   transition: opacity 0.5s;
 }
 .cell.hidden {
@@ -36,5 +44,14 @@ defineProps({
 .cell img {
   width: 100%;
   height: 100%;
+}
+.lamp-glow {
+  position: absolute;
+  top: 10%;
+  left: 10%;
+  width: 80%;
+  height: 80%;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.5);
 }
 </style>
