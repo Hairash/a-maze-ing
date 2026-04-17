@@ -2,6 +2,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   initialThoughtBubbleState,
+  startThoughtBubbleLoop,
+  stopThoughtBubbleLoop,
+  resetThoughtState,
   hideBubble,
   hideOldestBubble,
   onMove,
@@ -96,12 +99,11 @@ describe('group cooldown', () => {
   })
 })
 
-describe('bubble slots', () => {
-  it('assigns different slots to concurrent bubbles', () => {
+describe('bubble cap', () => {
+  it('multiple groups can fire concurrently and produce distinct bubbles', () => {
     const data = makeData()
     data.thoughtPrevHeroSight = 5.5
 
-    // Fire multiple groups
     data.levelComplete = true
     onLevelComplete(data)
     data.thoughtMoveCount = 200
@@ -109,20 +111,18 @@ describe('bubble slots', () => {
     onMapRevealed(data)
 
     expect(data.thoughtBubbles).toHaveLength(2)
-    const slots = data.thoughtBubbles.map((b) => b.slot)
-    expect(new Set(slots).size).toBe(2)
+    const ids = data.thoughtBubbles.map((b) => b.id)
+    expect(new Set(ids).size).toBe(2)
   })
 
-  it('rejects a 5th bubble when all 4 slots are occupied', () => {
+  it('rejects a 5th bubble when MAX_BUBBLES (4) are already shown', () => {
     const data = makeData()
     data.thoughtPrevHeroSight = 5.5
 
-    // Manually fill 4 slots
     for (let i = 0; i < 4; i++) {
       data.thoughtBubbles.push({
         id: i + 1,
         text: 'test',
-        slot: ['top-right', 'top-left', 'bottom-right', 'bottom-left'][i],
         group: `group${i}`,
         hideTimerId: null,
         moveAtShow: 0,
@@ -133,7 +133,6 @@ describe('bubble slots', () => {
 
     data.levelComplete = true
     onLevelComplete(data)
-    // Should still be 4 — no slot was free
     expect(data.thoughtBubbles).toHaveLength(4)
   })
 })
@@ -259,7 +258,7 @@ describe('bubble expiry by moves', () => {
     data.thoughtBubbles.push({
       id: 99,
       text: 'test',
-      slot: 'top-right',
+
       group: 'test',
       hideTimerId: null,
       moveAtShow: 0,
@@ -275,6 +274,113 @@ describe('bubble expiry by moves', () => {
   })
 })
 
+describe('cooldown is per-group, not global', () => {
+  it('one group on cooldown does not block another group', () => {
+    const data = makeData({ levelComplete: true, mapRevealed: true })
+    data.thoughtPrevHeroSight = 5.5
+
+    onLevelComplete(data)
+    expect(data.thoughtBubbles).toHaveLength(1)
+
+    // Fire a different group at the same move count — should not be blocked.
+    onMapRevealed(data)
+    expect(data.thoughtBubbles).toHaveLength(2)
+    const groups = data.thoughtBubbles.map((b) => b.group).sort()
+    expect(groups).toEqual(['levelComplete', 'mapRevealed'])
+  })
+})
+
+describe('resetThoughtState', () => {
+  it('clears cooldowns so groups can re-fire immediately', () => {
+    const data = makeData({ levelComplete: true })
+    data.thoughtPrevHeroSight = 5.5
+    onLevelComplete(data)
+    expect(data.thoughtBubbles).toHaveLength(1)
+
+    resetThoughtState(data)
+    onLevelComplete(data)
+    expect(data.thoughtBubbles).toHaveLength(1)
+    expect(data.thoughtMoveCount).toBe(0)
+  })
+
+  it('clears all bubbles', () => {
+    const data = makeData()
+    data.thoughtPrevHeroSight = 5.5
+    data.thoughtBubbles.push({
+      id: 99, text: 'x', group: 'g',
+      hideTimerId: null, moveAtShow: 0, maxMoves: 999,
+    })
+    resetThoughtState(data)
+    expect(data.thoughtBubbles).toHaveLength(0)
+  })
+})
+
+describe('passive idle timer', () => {
+  it('fires a passive thought after the idle delay', () => {
+    const data = makeData()
+    data.thoughtPrevHeroSight = 5.5
+    const startId = data.thoughtNextBubbleId
+    startThoughtBubbleLoop(data)
+
+    // Idle delay is 20-40s; 41s guarantees the timer fires at least once.
+    // We check thoughtNextBubbleId because the bubble itself may have
+    // been hidden by its own 10s visible-time timer before 41s elapsed.
+    vi.advanceTimersByTime(41 * 1000)
+    expect(data.thoughtNextBubbleId).toBeGreaterThan(startId)
+    expect(data.thoughtGroupLastMoves.passive).toBe(0)
+    stopThoughtBubbleLoop(data)
+  })
+
+  it('does not fire passive during levelComplete', () => {
+    const data = makeData({ levelComplete: true })
+    data.thoughtPrevHeroSight = 5.5
+    const startId = data.thoughtNextBubbleId
+    startThoughtBubbleLoop(data)
+    vi.advanceTimersByTime(41 * 1000)
+    expect(data.thoughtNextBubbleId).toBe(startId)
+    expect(data.thoughtGroupLastMoves.passive).toBeUndefined()
+    stopThoughtBubbleLoop(data)
+  })
+
+  it('does not fire passive during mapRevealed', () => {
+    const data = makeData({ mapRevealed: true })
+    data.thoughtPrevHeroSight = 5.5
+    const startId = data.thoughtNextBubbleId
+    startThoughtBubbleLoop(data)
+    vi.advanceTimersByTime(41 * 1000)
+    expect(data.thoughtNextBubbleId).toBe(startId)
+    expect(data.thoughtGroupLastMoves.passive).toBeUndefined()
+    stopThoughtBubbleLoop(data)
+  })
+})
+
+describe('multiple events on a single move', () => {
+  it('fires multiple groups on the same move when independent events trigger', () => {
+    // Sight drop + lamp into sight + dead end + revisit — all at once.
+    const data = makeData({
+      heroSight: 4.5,         // dropped from 5.5
+      heroX: 1, heroY: 0,
+    })
+    // Surround so countOpenNeighbours <= 1
+    data.field[2][0] = 'wall'
+    data.field[1][1] = 'wall'
+    // Place a lamp newly visible
+    data.field[2][1] = 'lamp'
+    data.thoughtPrevHeroSight = 5.5
+    data.thoughtPrevVisibleLampKeys = []
+    data.thoughtPrevFinishVisible = false
+    data.soulTrack = { '1,0': 2 } // revisit
+
+    onMove(data)
+    const groups = new Set(data.thoughtBubbles.map((b) => b.group))
+    // Up to 4 of: visibilityDecreased, discovery, geometry, onLamp.
+    // onLamp won't fire because ghost is not on a lamp (cell 1,0 is empty).
+    expect(groups.has('visibilityDecreased')).toBe(true)
+    expect(groups.has('discovery')).toBe(true)
+    expect(groups.has('geometry')).toBe(true)
+  })
+})
+
 describe('manual bubble dismiss', () => {
   it('hides bubble by id and clears its timer', () => {
     const data = makeData()
@@ -282,7 +388,7 @@ describe('manual bubble dismiss', () => {
     data.thoughtBubbles = [{
       id: 5,
       text: 'test',
-      slot: 'top-right',
+
       group: 'test',
       hideTimerId: timerId,
       moveAtShow: 0,
@@ -299,7 +405,7 @@ describe('manual bubble dismiss', () => {
       {
         id: 2,
         text: 'newer',
-        slot: 'top-right',
+  
         group: 'test',
         hideTimerId: null,
         moveAtShow: 12,
@@ -308,7 +414,7 @@ describe('manual bubble dismiss', () => {
       {
         id: 1,
         text: 'older',
-        slot: 'top-left',
+  
         group: 'test',
         hideTimerId: null,
         moveAtShow: 3,

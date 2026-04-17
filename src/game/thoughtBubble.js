@@ -3,8 +3,9 @@
 // Thoughts are organised into GROUPS. Active groups fire when a matching
 // event is detected (e.g. sight just dropped, lamp came into sight). The
 // passive group fires on an idle timer. Each group has its own cooldown so
-// thoughts from the same group don't stack up. Multiple groups can be on
-// screen at once, each in its own corner slot.
+// thoughts from the same group don't stack up. Up to MAX_BUBBLES bubbles
+// can be on screen at once; the actual screen position is decided by
+// bubblePlacement.js (this module only tracks identity and lifetime).
 //
 // Conditions are always evaluated against information the player can see —
 // cells outside the current sight radius are ignored.
@@ -41,8 +42,9 @@ const VERY_LOW_SIGHT_THRESHOLD = 1.5
 const SIGHT_DROP_PERIOD = 20
 const SIGHT_DROP_WARNING_WINDOW = 3
 
-// Maximum bubbles on screen at once (one per slot).
-const BUBBLE_SLOTS = ['top-right', 'top-left', 'bottom-right', 'bottom-left']
+// Maximum bubbles on screen at once. The actual screen position is decided
+// in App.vue (see bubblePlacement.js) — this module only enforces the cap.
+const MAX_BUBBLES = 4
 
 // ============================================================
 // GROUPS
@@ -164,15 +166,15 @@ export function onMapRevealed(data) {
   tryFireGroup(data, GROUPS.MAP_REVEALED)
 }
 
-// Debug helper: fill every slot with a random thought that never expires.
+// Debug helper: fill every available slot with a random thought that never
+// expires. Used to visualise all bubble positions at once.
 export function debugFillAllSlots(data) {
   const allThoughts = Object.values(THOUGHTS).flat()
-  for (const slot of BUBBLE_SLOTS) {
+  for (let i = 0; i < MAX_BUBBLES; i++) {
     const text = allThoughts[Math.floor(Math.random() * allThoughts.length)]
     data.thoughtBubbles.push({
       id: data.thoughtNextBubbleId++,
       text,
-      slot,
       group: 'debug',
       hideTimerId: null,
       moveAtShow: data.thoughtMoveCount,
@@ -306,8 +308,7 @@ function cancelPassiveIdleTimer(data) {
 // ============================================================
 
 function showBubble(data, candidates, group) {
-  const slot = pickFreeSlot(data)
-  if (slot === null) return false
+  if (data.thoughtBubbles.length >= MAX_BUBBLES) return false
 
   const id = data.thoughtNextBubbleId++
   const text = candidates[Math.floor(Math.random() * candidates.length)]
@@ -321,7 +322,6 @@ function showBubble(data, candidates, group) {
   data.thoughtBubbles.push({
     id,
     text,
-    slot,
     group,
     hideTimerId,
     moveAtShow: data.thoughtMoveCount,
@@ -353,14 +353,6 @@ function clearAllBubbles(data) {
     if (b.hideTimerId !== null) window.clearTimeout(b.hideTimerId)
   })
   data.thoughtBubbles = []
-}
-
-function pickFreeSlot(data) {
-  const used = new Set(data.thoughtBubbles.map((b) => b.slot))
-  for (const slot of BUBBLE_SLOTS) {
-    if (!used.has(slot)) return slot
-  }
-  return null
 }
 
 // ============================================================
