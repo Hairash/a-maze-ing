@@ -37,6 +37,17 @@
     </aside>
   </main>
   <teleport to="body">
+    <div v-if="showPortalDialog" class="portal-dialog-backdrop">
+      <div class="portal-dialog" role="dialog" aria-modal="true" aria-label="Level complete">
+        <div class="portal-dialog__plate">
+          <h2 class="portal-dialog__title">Portal discovered</h2>
+          <p class="portal-dialog__body">Your soul remembers every step.</p>
+          <p class="portal-dialog__hint">Press OK to reveal the full map.</p>
+          <button type="button" class="brick-btn portal-dialog__ok" @click="confirmRevealMap">OK</button>
+        </div>
+      </div>
+    </div>
+
     <div v-if="showMovePad" class="move-pad" :style="movePadStyle" aria-label="Movement controls">
       <button
         type="button"
@@ -90,6 +101,7 @@ import {
   onMove as onThoughtMove,
   onLevelComplete as onThoughtLevelComplete,
   onMapRevealed as onThoughtMapRevealed,
+  debugFillAllSlots,
 } from './game/thoughtBubble.js'
 
 export default {
@@ -120,6 +132,7 @@ export default {
       showMovePad: false,
       heroImage: randomGhostImage(),
       mapRevealed: false,
+      showPortalDialog: false,
       levelComplete: false,
       edgeHideSequenceActive: false,
       edgeHideSequenceTimerId: null,
@@ -156,6 +169,9 @@ export default {
     window.addEventListener('pageshow', this.queueCenterOnHero)
     this.updateViewportSize()
     startThoughtBubbleLoop(this)
+    if (consts.DEBUG_ALL_THOUGHT_BUBBLES) {
+      debugFillAllSlots(this)
+    }
   },
 
   beforeUnmount() {
@@ -201,7 +217,7 @@ export default {
           top: `${Math.round(rect.top)}px`,
           '--bubble-flip-x': placement?.flipX ? -1 : 1,
           '--bubble-flip-y': placement?.flipY ? -1 : 1,
-          '--bubble-text-top-extra': placement?.flipY ? '10%' : '0%',
+          '--bubble-text-top': placement?.flipY ? '25px' : '-25px',
         }
       }
       return placements
@@ -246,17 +262,6 @@ export default {
       this.edgeHideSequenceTimerId = null
     },
 
-    rectsOverlap(a, b) {
-      return !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom)
-    },
-
-    getOverlapArea(a, b) {
-      if (!this.rectsOverlap(a, b)) return 0
-      const overlapWidth = Math.min(a.right, b.right) - Math.max(a.left, b.left)
-      const overlapHeight = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top)
-      return Math.max(0, overlapWidth) * Math.max(0, overlapHeight)
-    },
-
     getBoardElement() {
       return this.$refs.board?.$el ?? null
     },
@@ -274,59 +279,6 @@ export default {
       }
     },
 
-    getImportantObjectRects() {
-      const board = this.getBoardElement()
-      if (!board || !this.field) return []
-      const boardRect = board.getBoundingClientRect()
-      const viewport = {
-        left: 0,
-        top: 0,
-        right: this.viewportWidth,
-        bottom: this.viewportHeight,
-      }
-      const rects = []
-      for (let x = 0; x < this.width; x++) {
-        for (let y = 0; y < this.height; y++) {
-          const type = this.field?.[x]?.[y]
-          if (type !== 'finish' && type !== 'lamp') continue
-          const rect = {
-            left: boardRect.left + x * this.cellSize,
-            top: boardRect.top + y * this.cellSize,
-            right: boardRect.left + (x + 1) * this.cellSize,
-            bottom: boardRect.top + (y + 1) * this.cellSize,
-            importance: type === 'finish' ? 2 : 1,
-          }
-          if (this.rectsOverlap(rect, viewport)) rects.push(rect)
-        }
-      }
-      return rects
-    },
-
-    getMovePadViewportRect() {
-      if (!this.showMovePad) return null
-      const padSize = 56 * 3 + 8 * 2
-      const scrollLeft = document.body.scrollLeft
-      const scrollTop = document.body.scrollTop
-      const left = parseFloat(this.movePadStyle.left) - scrollLeft
-      const top = parseFloat(this.movePadStyle.top) - scrollTop
-      if (Number.isNaN(left) || Number.isNaN(top)) return null
-      return {
-        left,
-        top,
-        right: left + padSize,
-        bottom: top + padSize,
-        importance: 5,
-      }
-    },
-
-    getBubbleCornerSequence(preferredCorner) {
-      const isMobile = this.viewportWidth <= 768
-      const corners = ['top-right', 'top-left', 'bottom-left', 'bottom-right']
-      const filtered = isMobile ? corners.filter((corner) => corner !== 'bottom-right') : corners
-      if (!preferredCorner || !filtered.includes(preferredCorner)) return filtered
-      return [preferredCorner, ...filtered.filter((corner) => corner !== preferredCorner)]
-    },
-
     computeBubbleSize(text) {
       const vw = this.viewportWidth
       const baseMaxWidth = Math.min(340, Math.max(220, vw * 0.35))
@@ -337,153 +289,183 @@ export default {
       return { width, height }
     },
 
-    buildCandidateRects(size, preferredCorner) {
+    // Viewport zone of the hero: 'left'/'center'/'right' × 'top'/'center'/'bottom'.
+    // Hero is considered centered if it's within one cell of the viewport
+    // midline. We compute this from scroll math rather than the live DOM —
+    // `getBoundingClientRect` may not yet reflect a just-scheduled
+    // `scrollToPoint`, which would otherwise leave us reading the
+    // pre-centred board position and misclassifying the zone.
+    getHeroViewportZone() {
+      const cellSize = this.cellSize
+      const vw = this.viewportWidth
+      const vh = this.viewportHeight
+      const heroCellCx = (this.heroX + 0.5) * cellSize
+      const heroCellCy = (this.heroY + 0.5) * cellSize
+      const boardWidth = this.width * cellSize
+      const boardHeight = this.height * cellSize
+      const maxScrollX = Math.max(0, boardWidth - vw)
+      const maxScrollY = Math.max(0, boardHeight - vh)
+      const scrollX = Math.max(0, Math.min(heroCellCx - vw / 2, maxScrollX))
+      const scrollY = Math.max(0, Math.min(heroCellCy - vh / 2, maxScrollY))
+      const heroVx = heroCellCx - scrollX
+      const heroVy = heroCellCy - scrollY
+      const midX = vw / 2
+      const midY = vh / 2
+      const tolerance = cellSize
+      return {
+        h: heroVx < midX - tolerance ? 'left' : heroVx > midX + tolerance ? 'right' : 'center',
+        v: heroVy < midY - tolerance ? 'top' : heroVy > midY + tolerance ? 'bottom' : 'center',
+      }
+    },
+
+    isMobileViewport() {
+      return this.viewportWidth <= 768
+    },
+
+    // Ordered list of 4 slot descriptors { corner, offset } for the current zone.
+    // `offset` = 0 means at the corner; `offset` = 1 means stacked one bubble
+    // inward (below a top corner, above a bottom corner).
+    getLayoutSlots() {
+      const zone = this.getHeroViewportZone()
+      if (this.isMobileViewport()) {
+        // Hero near the bottom — all four go on top (two stacks).
+        if (zone.v === 'bottom') {
+          return [
+            { corner: 'top-right', offset: 0 },
+            { corner: 'top-left', offset: 0 },
+            { corner: 'top-right', offset: 1 },
+            { corner: 'top-left', offset: 1 },
+          ]
+        }
+        // Hero near the top — two at bottom-left, plus two elsewhere.
+        if (zone.v === 'top') {
+          const base = [
+            { corner: 'bottom-left', offset: 0 },
+            { corner: 'bottom-left', offset: 1 },
+          ]
+          if (zone.h === 'left') {
+            return [
+              ...base,
+              { corner: 'top-right', offset: 0 },
+              { corner: 'top-right', offset: 1 },
+            ]
+          }
+          if (zone.h === 'right') {
+            return [
+              ...base,
+              { corner: 'top-left', offset: 0 },
+              { corner: 'top-left', offset: 1 },
+            ]
+          }
+          return [
+            ...base,
+            { corner: 'top-right', offset: 0 },
+            { corner: 'top-left', offset: 0 },
+          ]
+        }
+        // Hero vertically centered — default mobile layout.
+        return [
+          { corner: 'top-right', offset: 0 },
+          { corner: 'top-left', offset: 0 },
+          { corner: 'bottom-left', offset: 0 },
+          { corner: 'bottom-left', offset: 1 },
+        ]
+      }
+
+      // Desktop. Hero left of center → all four on the right. Mirror for right.
+      if (zone.h === 'left') {
+        return [
+          { corner: 'top-right', offset: 0 },
+          { corner: 'bottom-right', offset: 0 },
+          { corner: 'top-right', offset: 1 },
+          { corner: 'bottom-right', offset: 1 },
+        ]
+      }
+      if (zone.h === 'right') {
+        return [
+          { corner: 'top-left', offset: 0 },
+          { corner: 'bottom-left', offset: 0 },
+          { corner: 'top-left', offset: 1 },
+          { corner: 'bottom-left', offset: 1 },
+        ]
+      }
+      // Hero centered horizontally — one per corner.
+      return [
+        { corner: 'top-right', offset: 0 },
+        { corner: 'top-left', offset: 0 },
+        { corner: 'bottom-right', offset: 0 },
+        { corner: 'bottom-left', offset: 0 },
+      ]
+    },
+
+    slotToRect(slot, size) {
       const margin = 8
       const stackGap = 16
       const maxX = Math.max(margin, this.viewportWidth - size.width - margin)
       const maxY = Math.max(margin, this.viewportHeight - size.height - margin)
-      const corners = this.getBubbleCornerSequence(preferredCorner)
-      const variants = []
-
-      const createRect = (corner, offsetIndex) => {
-        const inward = offsetIndex * (size.height + stackGap)
-        let left = margin
-        let top = margin
-        if (corner === 'top-right') {
-          left = maxX
-          top = Math.min(maxY, margin + inward)
-        } else if (corner === 'top-left') {
-          left = margin
-          top = Math.min(maxY, margin + inward)
-        } else if (corner === 'bottom-right') {
-          left = maxX
-          top = Math.max(margin, maxY - inward)
-        } else {
-          left = margin
-          top = Math.max(margin, maxY - inward)
-        }
-        return {
-          corner,
-          rect: {
-            left,
-            top,
-            right: left + size.width,
-            bottom: top + size.height,
-          },
-        }
+      const inward = slot.offset * (size.height + stackGap)
+      let left = margin
+      let top = margin
+      if (slot.corner === 'top-right') {
+        left = maxX
+        top = Math.min(maxY, margin + inward)
+      } else if (slot.corner === 'top-left') {
+        left = margin
+        top = Math.min(maxY, margin + inward)
+      } else if (slot.corner === 'bottom-right') {
+        left = maxX
+        top = Math.max(margin, maxY - inward)
+      } else {
+        left = margin
+        top = Math.max(margin, maxY - inward)
       }
-
-      for (const corner of corners) {
-        variants.push(createRect(corner, 0))
-        variants.push(createRect(corner, 1))
-      }
-
-      return variants
-    },
-
-    scoreCandidate(candidateRect, placedRects, blockedRects, movePadRect, heroRect) {
-      let score = 0
-      // Highest priority: avoid move pad.
-      if (movePadRect) score += this.getOverlapArea(candidateRect, movePadRect) * 10000
-
-      // High priority: avoid overlap with existing bubbles and hero.
-      for (const rect of placedRects) score += this.getOverlapArea(candidateRect, rect) * 4000
-      for (const rect of blockedRects) {
-        const importance = rect.importance ?? 3
-        score += this.getOverlapArea(candidateRect, rect) * importance * 900
-      }
-
-      // Prefer bubbles further from hero to keep visual space around the character.
-      if (heroRect) {
-        const heroCenterX = (heroRect.left + heroRect.right) / 2
-        const heroCenterY = (heroRect.top + heroRect.bottom) / 2
-        const bubbleCenterX = (candidateRect.left + candidateRect.right) / 2
-        const bubbleCenterY = (candidateRect.top + candidateRect.bottom) / 2
-        const distance = Math.hypot(bubbleCenterX - heroCenterX, bubbleCenterY - heroCenterY)
-        score -= distance * 3
-      }
-      return score
-    },
-
-    pickBubblePlacement(size, slot, placedRects, blockedRects, viewportRect, movePadRect) {
-      const preferredCorner = slot ?? 'top-right'
-      const candidates = this.buildCandidateRects(size, preferredCorner)
-      let bestCandidate = candidates[0]
-      let bestScore = Number.POSITIVE_INFINITY
-      const heroRect = this.getHeroViewportRect()
-
-      for (const candidate of candidates) {
-        const candidateRect = candidate.rect
-        if (!this.rectsOverlap(candidateRect, viewportRect)) continue
-        const score = this.scoreCandidate(
-          candidateRect,
-          placedRects,
-          blockedRects,
-          movePadRect,
-          heroRect,
-        )
-        if (score < bestScore) {
-          bestScore = score
-          bestCandidate = candidate
-        }
-      }
-
-      const flipByCorner = {
-        'top-right': { flipX: false, flipY: false },
-        'top-left': { flipX: true, flipY: false },
-        'bottom-right': { flipX: false, flipY: true },
-        'bottom-left': { flipX: true, flipY: true },
-      }
-      const flip = flipByCorner[bestCandidate.corner] ?? flipByCorner['top-right']
-
       return {
-        rect: bestCandidate.rect,
-        corner: bestCandidate.corner,
-        flipX: flip.flipX,
-        flipY: flip.flipY,
+        left,
+        top,
+        right: left + size.width,
+        bottom: top + size.height,
       }
     },
 
     reconcileBubblePlacements() {
       const activeIds = new Set(this.thoughtBubbles.map((bubble) => bubble.id))
+
+      // Drop placements for bubbles that are gone; keep the rest untouched —
+      // once a bubble has a spot, it never moves.
       const nextPlacements = {}
       for (const [id, placement] of Object.entries(this.bubblePlacementById)) {
         const numericId = Number(id)
         if (activeIds.has(numericId)) nextPlacements[numericId] = placement
       }
 
-      const viewportRect = {
-        left: 0,
-        top: 0,
-        right: this.viewportWidth,
-        bottom: this.viewportHeight,
+      // Track which (corner, offset) pairs are already taken by cached bubbles.
+      const occupiedKeys = new Set()
+      for (const placement of Object.values(nextPlacements)) {
+        occupiedKeys.add(`${placement.corner}:${placement.offset}`)
       }
-      const blockedRects = []
-      const heroRect = this.getHeroViewportRect()
-      if (heroRect) blockedRects.push(heroRect)
-      blockedRects.push(...this.getImportantObjectRects())
-      const movePadRect = this.getMovePadViewportRect()
-      if (movePadRect) blockedRects.push(movePadRect)
 
-      const placedRects = []
+      const slots = this.getLayoutSlots()
+      const flipByCorner = {
+        'top-right': { flipX: false, flipY: false },
+        'top-left': { flipX: true, flipY: false },
+        'bottom-right': { flipX: false, flipY: true },
+        'bottom-left': { flipX: true, flipY: true },
+      }
+
       for (const bubble of this.thoughtBubbles) {
-        const cached = nextPlacements[bubble.id]
-        if (cached?.rect) {
-          placedRects.push(cached.rect)
-          continue
-        }
+        if (nextPlacements[bubble.id]) continue // already placed — leave it
+        const slot = slots.find((s) => !occupiedKeys.has(`${s.corner}:${s.offset}`))
+        if (!slot) continue
+        occupiedKeys.add(`${slot.corner}:${slot.offset}`)
         const size = this.computeBubbleSize(bubble.text)
-        const placement = this.pickBubblePlacement(
-          size,
-          bubble.slot,
-          placedRects,
-          blockedRects,
-          viewportRect,
-          movePadRect,
-        )
-        placedRects.push(placement.rect)
+        const rect = this.slotToRect(slot, size)
+        const flip = flipByCorner[slot.corner] ?? flipByCorner['top-right']
         nextPlacements[bubble.id] = {
-          ...placement,
+          rect,
+          corner: slot.corner,
+          offset: slot.offset,
+          flipX: flip.flipX,
+          flipY: flip.flipY,
           size,
         }
       }
@@ -654,8 +636,13 @@ export default {
       this.edgeHideSequenceTimerId = window.setTimeout(() => {
         this.edgeHideSequenceActive = false
         this.edgeHideSequenceTimerId = null
-        this.revealMap()
+        this.showPortalDialog = true
       }, isLoad ? Math.max(200, sequenceDurationMs * 0.5) : sequenceDurationMs)
+    },
+
+    confirmRevealMap() {
+      this.showPortalDialog = false
+      this.revealMap()
     },
 
     revealMap() {
@@ -669,6 +656,7 @@ export default {
     carryOn() {
       this.clearEdgeHideSequenceTimer()
       this.edgeHideSequenceActive = false
+      this.showPortalDialog = false
       this.mapRevealed = false
       this.levelComplete = false
       initLevel(this, true)
@@ -724,7 +712,7 @@ main {
   z-index: 8000;
   --bubble-flip-x: 1;
   --bubble-flip-y: 1;
-  --bubble-text-top-extra: 0%;
+  --bubble-text-top: -25px;
   pointer-events: auto;
   display: flex;
   align-items: center;
@@ -744,10 +732,11 @@ main {
 
 .thought-bubble__text {
   position: relative;
+  top: var(--bubble-text-top);
   z-index: 1;
   display: block;
   width: 100%;
-  padding: calc(16% + var(--bubble-text-top-extra)) 15% calc(27% - var(--bubble-text-top-extra)) 15%;
+  padding: 0 41px;
   box-sizing: border-box;
   color: rgba(0, 0, 0, 0.9);
   font-size: clamp(0.76rem, 1.6vw, 0.92rem);
@@ -837,6 +826,52 @@ main {
   padding: 14px 36px;
   cursor: pointer;
   min-width: 120px;
+}
+
+.portal-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  z-index: 99999;
+  background: rgba(3, 8, 18, 0.45);
+}
+
+.portal-dialog {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.portal-dialog__plate {
+  width: min(90vw, 520px);
+  background: url('/images/plate.png') no-repeat center / 100% 100%;
+  aspect-ratio: 1317 / 687;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 10% 14%;
+  text-align: center;
+}
+
+.portal-dialog__title {
+  color: #111;
+  font-size: clamp(1.1rem, 4vw, 1.8rem);
+  font-weight: 700;
+  margin: 0 0 0.4em;
+}
+
+.portal-dialog__body {
+  color: #333;
+  font-size: clamp(0.8rem, 2.5vw, 1rem);
+  margin: 0 0 0.3em;
+}
+
+.portal-dialog__hint {
+  color: #555;
+  font-size: clamp(0.7rem, 2vw, 0.9rem);
+  margin: 0 0 0.8em;
 }
 
 </style>

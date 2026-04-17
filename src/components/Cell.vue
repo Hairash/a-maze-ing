@@ -34,9 +34,9 @@ defineProps({
       transitionDelay: `${Math.max(0, transitionDelayMs)}ms`,
     }"
   >
-    <span v-if="type === 'lamp'" class="lamp-glow"></span>
-    <img v-if="type === 'lamp' && activated" src="/images/glow.png">
-    <img v-else-if="type !== 'empty'" :src="`/images/${type}.png`">
+    <span v-if="type === 'lamp' || type === 'finish'" class="lamp-glow"></span>
+    <img v-if="type === 'lamp' && activated" src="/images/glow.png" class="cell-img">
+    <img v-else-if="type !== 'empty'" :src="`/images/${type}.png`" class="cell-img">
   </div>
 </template>
 
@@ -57,13 +57,15 @@ defineProps({
   width: 100%;
   height: 100%;
 }
+.cell-img {
+  position: relative;
+  z-index: 4;
+}
 .lamp-glow {
   position: absolute;
-  top: 10%;
-  left: 10%;
-  width: 80%;
-  height: 80%;
-  border-radius: 50%;
+  width: 100%;
+  height: 100%;
   background: rgba(255, 255, 255, 0.5);
+  z-index: 3;
 }
 </style>

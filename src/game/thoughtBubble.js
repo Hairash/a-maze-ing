@@ -25,10 +25,8 @@ const PASSIVE_IDLE_SECONDS_MIN = 20
 const PASSIVE_IDLE_SECONDS_MAX = 40
 
 // How long a bubble stays on screen (whichever of the two limits hits first).
-const BUBBLE_VISIBLE_SECONDS_MIN = 10
-const BUBBLE_VISIBLE_SECONDS_MAX = 20
-const BUBBLE_VISIBLE_MOVES_MIN = 20
-const BUBBLE_VISIBLE_MOVES_MAX = 40
+const BUBBLE_VISIBLE_SECONDS = 10
+const BUBBLE_VISIBLE_MOVES = 20
 
 // Condition thresholds.
 const REPEATED_VISIT_COUNT = 2
@@ -166,6 +164,23 @@ export function onMapRevealed(data) {
   tryFireGroup(data, GROUPS.MAP_REVEALED)
 }
 
+// Debug helper: fill every slot with a random thought that never expires.
+export function debugFillAllSlots(data) {
+  const allThoughts = Object.values(THOUGHTS).flat()
+  for (const slot of BUBBLE_SLOTS) {
+    const text = allThoughts[Math.floor(Math.random() * allThoughts.length)]
+    data.thoughtBubbles.push({
+      id: data.thoughtNextBubbleId++,
+      text,
+      slot,
+      group: 'debug',
+      hideTimerId: null,
+      moveAtShow: data.thoughtMoveCount,
+      maxMoves: Infinity,
+    })
+  }
+}
+
 export function hideBubble(data, id) {
   return hideBubbleById(data, id)
 }
@@ -296,8 +311,8 @@ function showBubble(data, candidates, group) {
 
   const id = data.thoughtNextBubbleId++
   const text = candidates[Math.floor(Math.random() * candidates.length)]
-  const maxMoves = randIntInclusive(BUBBLE_VISIBLE_MOVES_MIN, BUBBLE_VISIBLE_MOVES_MAX)
-  const visibleMs = randRange(BUBBLE_VISIBLE_SECONDS_MIN, BUBBLE_VISIBLE_SECONDS_MAX) * 1000
+  const maxMoves = BUBBLE_VISIBLE_MOVES
+  const visibleMs = BUBBLE_VISIBLE_SECONDS * 1000
 
   const hideTimerId = window.setTimeout(() => {
     hideBubbleById(data, id)
@@ -427,8 +442,4 @@ function countOpenNeighbours(data) {
 
 function randRange(min, max) {
   return min + Math.random() * (max - min)
-}
-
-function randIntInclusive(min, max) {
-  return min + Math.floor(Math.random() * (max - min + 1))
 }

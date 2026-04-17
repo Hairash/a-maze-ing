@@ -18,30 +18,6 @@
       :height="cellSize * height"
       aria-hidden="true"
     >
-      <g
-        v-if="trailStartDot"
-        class="trail-start-cross"
-        :transform="`translate(${trailStartDot.x}, ${trailStartDot.y})`"
-      >
-        <line
-          :x1="-startCrossHalfSize"
-          :y1="-startCrossHalfSize"
-          :x2="startCrossHalfSize"
-          :y2="startCrossHalfSize"
-          :stroke-width="startCrossStroke"
-          stroke="rgba(255, 72, 122, 0.95)"
-          stroke-linecap="round"
-        />
-        <line
-          :x1="-startCrossHalfSize"
-          :y1="startCrossHalfSize"
-          :x2="startCrossHalfSize"
-          :y2="-startCrossHalfSize"
-          :stroke-width="startCrossStroke"
-          stroke="rgba(255, 72, 122, 0.95)"
-          stroke-linecap="round"
-        />
-      </g>
       <circle
         v-for="(dot, i) in trailDots"
         :key="i"
@@ -50,8 +26,25 @@
         :r="dotRadius"
         fill="rgba(0, 0, 0, 0.85)"
       />
+      <rect
+        v-if="trailStartCell"
+        :x="trailStartCell.x"
+        :y="trailStartCell.y"
+        :width="cellSize"
+        :height="cellSize"
+        fill="rgba(255, 255, 255, 0.5)"
+      />
+      <image
+        v-if="trailStartDot"
+        class="trail-start-cross"
+        href="/images/cross.png"
+        :x="trailStartDot.x - startCrossHalfSize"
+        :y="trailStartDot.y - startCrossHalfSize"
+        :width="startCrossHalfSize * 2"
+        :height="startCrossHalfSize * 2"
+      />
     </svg>
-    <img class="board-hero" :src="heroImage"
+    <img v-if="!revealMap" class="board-hero" :src="heroImage"
       :style="`left: ${heroX * cellSize}px; top: ${heroY * cellSize}px; width: ${cellSize}px; height: ${cellSize}px;`">
   </div>
 </template>
@@ -126,8 +119,14 @@ const trailDots = computed(() => {
 
 const dotRadius = computed(() => Math.max(1.2, props.cellSize / 20))
 const trailStartDot = computed(() => trailDots.value[0] ?? null)
-const startCrossHalfSize = computed(() => Math.max(5, props.cellSize * 0.22))
-const startCrossStroke = computed(() => Math.max(2, props.cellSize * 0.1))
+const trailStartCell = computed(() => {
+  const first = props.soulPath?.[0]
+  if (!first || !props.showSoulTrack) return null
+  return { x: first[0] * props.cellSize, y: first[1] * props.cellSize }
+})
+// cross.png has ~20% transparent padding on each side, so we upscale
+// to keep the "X" content roughly the same visual size as the cell.
+const startCrossHalfSize = computed(() => Math.max(8, props.cellSize * 0.5))
 
 function getCellType(x, y) {
   return props.field?.[x]?.[y] ?? 'wall'
@@ -177,6 +176,6 @@ function isCellHidden(x, y) {
 }
 
 .trail-start-cross {
-  filter: drop-shadow(0 0 6px rgba(255, 72, 122, 0.7));
+  pointer-events: none;
 }
 </style>
