@@ -13,6 +13,7 @@
       :reveal-map="game.mapRevealed"
       :soul-path="game.soulPath"
       :show-soul-track="game.mapRevealed"
+      :soul-fade-sequence-active="soulFadeSequenceActive"
       :edge-hide-sequence-active="edgeHideSequenceActive"
     />
     <CarryOnButton :visible="game.mapRevealed" @click="carryOn" />
@@ -78,11 +79,13 @@ const game = reactive({
 const { width: viewportWidth, height: viewportHeight } = useViewportSize()
 const heroImage = ref(randomGhostImage())
 const showPortalDialog = ref(false)
+const soulFadeSequenceActive = ref(false)
 const edgeHideSequenceActive = ref(false)
 const bubblePlacementById = ref({})
 
 let scrollClampFrameId = null
 let centerOnHeroTimerIds = []
+let soulFadeSequenceTimerId = null
 let edgeHideSequenceTimerId = null
 
 const cellSize = computed(() => {
@@ -140,6 +143,12 @@ function clearEdgeHideSequenceTimer() {
   if (edgeHideSequenceTimerId === null) return
   window.clearTimeout(edgeHideSequenceTimerId)
   edgeHideSequenceTimerId = null
+}
+
+function clearSoulFadeSequenceTimer() {
+  if (soulFadeSequenceTimerId === null) return
+  window.clearTimeout(soulFadeSequenceTimerId)
+  soulFadeSequenceTimerId = null
 }
 
 function centerOnHero() {
@@ -215,14 +224,23 @@ function moveHero(key) {
 
 function finishLevel(isLoad = false) {
   game.levelComplete = true
-  edgeHideSequenceActive.value = true
+  soulFadeSequenceActive.value = true
+  edgeHideSequenceActive.value = false
   onThoughtLevelComplete(game)
+  clearSoulFadeSequenceTimer()
   clearEdgeHideSequenceTimer()
 
+  const soulFadeDurationMs = 420
   const edgeLayers = Math.floor(Math.min(game.width, game.height) / 2)
   const perLayerDelayMs = 24
   const fadeDurationMs = 500
-  const sequenceDurationMs = edgeLayers * perLayerDelayMs + fadeDurationMs
+  const hideCellsDelayMs = isLoad ? Math.floor(soulFadeDurationMs * 0.5) : soulFadeDurationMs
+  const sequenceDurationMs = hideCellsDelayMs + edgeLayers * perLayerDelayMs + fadeDurationMs
+
+  soulFadeSequenceTimerId = window.setTimeout(() => {
+    soulFadeSequenceTimerId = null
+    edgeHideSequenceActive.value = true
+  }, hideCellsDelayMs)
 
   edgeHideSequenceTimerId = window.setTimeout(() => {
     edgeHideSequenceTimerId = null
@@ -235,6 +253,7 @@ function finishLevel(isLoad = false) {
 
 function confirmRevealMap() {
   showPortalDialog.value = false
+  soulFadeSequenceActive.value = false
   edgeHideSequenceActive.value = false
   revealMap()
 }
@@ -248,7 +267,9 @@ function revealMap() {
 }
 
 function carryOn() {
+  clearSoulFadeSequenceTimer()
   clearEdgeHideSequenceTimer()
+  soulFadeSequenceActive.value = false
   edgeHideSequenceActive.value = false
   showPortalDialog.value = false
   game.mapRevealed = false
@@ -298,6 +319,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('load', queueCenterOnHero)
   window.removeEventListener('pageshow', queueCenterOnHero)
   stopThoughtBubbleLoop(game)
+  clearSoulFadeSequenceTimer()
   clearEdgeHideSequenceTimer()
 })
 
