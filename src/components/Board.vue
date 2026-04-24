@@ -17,6 +17,7 @@ const props = defineProps({
   revealMap: { type: Boolean, default: false },
   soulPath: { type: Array, default: () => [] },
   showSoulTrack: { type: Boolean, default: false },
+  soulFadeSequenceActive: { type: Boolean, default: false },
   edgeHideSequenceActive: { type: Boolean, default: false },
 })
 
@@ -71,7 +72,10 @@ function isCellHidden(x, y) {
       :width="width"
       :height="height"
     />
-    <img v-if="!revealMap" class="board-hero" :src="heroImage"
+    <img
+      v-if="!revealMap"
+      :class="['board-hero', { 'board-hero--fading': soulFadeSequenceActive }]"
+      :src="heroImage"
       :style="`left: ${heroX * cellSize}px; top: ${heroY * cellSize}px; width: ${cellSize}px; height: ${cellSize}px;`">
   </div>
 </template>
@@ -90,5 +94,11 @@ function isCellHidden(x, y) {
   position: absolute;
   pointer-events: none;
   z-index: 3;
+  opacity: 1;
+  transition: opacity 0.42s ease-out;
+}
+
+.board-hero--fading {
+  opacity: 0;
 }
 </style>
