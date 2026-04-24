@@ -8,6 +8,7 @@ const props = defineProps({
   width: { type: Number, required: true },
   height: { type: Number, required: true },
   field: { type: Array, required: true },
+  wallVariants: { type: Array, default: null },
   heroX: { type: Number, required: true },
   heroY: { type: Number, required: true },
   cellSize: { type: Number, required: false },
@@ -23,6 +24,10 @@ const effectiveSight = computed(() => (props.revealMap ? Number.POSITIVE_INFINIT
 
 function getCellType(x, y) {
   return props.field?.[x]?.[y] ?? 'wall'
+}
+
+function getWallVariant(x, y) {
+  return props.wallVariants?.[x]?.[y] ?? null
 }
 
 function getEdgeRank(x, y) {
@@ -52,6 +57,7 @@ function isCellHidden(x, y) {
         <Cell
           :size="cellSize"
           :type="getCellType(x - 1, y - 1)"
+          :wall-variant="getWallVariant(x - 1, y - 1)"
           :is-hidden="isCellHidden(x - 1, y - 1)"
           :transition-delay-ms="getCellHideDelayMs(x - 1, y - 1)"
           :activated="x - 1 === heroX && y - 1 === heroY"
@@ -77,6 +83,7 @@ function isCellHidden(x, y) {
 
 .board {
   position: relative;
+  background-color: #000;
 }
 
 .board-hero {

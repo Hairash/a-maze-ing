@@ -1,5 +1,8 @@
 <script setup>
-defineProps({
+import { computed } from 'vue'
+import { WALL_FOLDER } from '../game/const.js'
+
+const props = defineProps({
   size: {
     type: Number,
     required: false,
@@ -7,6 +10,11 @@ defineProps({
   type: {
     type: String,
     required: true,
+  },
+  wallVariant: {
+    type: Number,
+    required: false,
+    default: null,
   },
   isHidden: {
     type: Boolean,
@@ -23,6 +31,13 @@ defineProps({
     default: 0,
   },
 })
+
+const cellImageSrc = computed(() => {
+  if (props.type === 'wall' && props.wallVariant) {
+    return `/images/${WALL_FOLDER}/wall${props.wallVariant}.png`
+  }
+  return `/images/${props.type}.png`
+})
 </script>
 
 <template>
@@ -36,7 +51,7 @@ defineProps({
   >
     <span v-if="type === 'lamp' || type === 'finish'" class="lamp-glow"></span>
     <img v-if="type === 'lamp' && activated" src="/images/glow.png" class="cell-img">
-    <img v-else-if="type !== 'empty'" :src="`/images/${type}.png`" class="cell-img">
+    <img v-else-if="type !== 'empty'" :src="cellImageSrc" class="cell-img">
   </div>
 </template>
 

@@ -5,6 +5,7 @@
       :width="game.width"
       :height="game.height"
       :field="game.field"
+      :wall-variants="game.wallVariants"
       :hero-x="game.heroX"
       :hero-y="game.heroY"
       :hero-sight="game.heroSight"
@@ -61,6 +62,7 @@ const game = reactive({
   width: consts.BOARD.width,
   height: consts.BOARD.height,
   field: null,
+  wallVariants: null,
   heroX: 0,
   heroY: 0,
   heroSight: -1,
@@ -314,6 +316,10 @@ watch(
 
 <style>
 @import './assets/base.css';
+
+body {
+  background: #000;
+}
 
 main {
   touch-action: none;

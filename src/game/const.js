@@ -8,11 +8,26 @@ export const INIT_SIGHT = 5.5
 
 // Graphic parameters
 export const CELL_HIDE_DELAY = 100
+
+// Ghost sprites: subfolder under public/images/ containing
+// ghost_1.png..ghost_N.png. Keep GHOST_COUNT in sync with the
+// actual number of files in that folder.
+export const GHOST_FOLDER = 'ghosts'
 export const GHOST_COUNT = 19
+
+// Active wall tile set: subfolder under public/images/ containing
+// wall1.png..wallN.png. Keep WALL_VARIANT_COUNT in sync with the
+// actual number of files in that folder.
+export const WALL_FOLDER = 'walls_straight'
+export const WALL_VARIANT_COUNT = 16
 
 export function randomGhostImage() {
     const idx = Math.floor(Math.random() * GHOST_COUNT) + 1
-    return `/images/ghost_${idx}.png`
+    return `/images/${GHOST_FOLDER}/ghost_${idx}.png`
+}
+
+export function randomWallVariant() {
+    return Math.floor(Math.random() * WALL_VARIANT_COUNT) + 1
 }
 
 // Debug flags

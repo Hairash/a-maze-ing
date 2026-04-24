@@ -10,6 +10,7 @@ const STORAGE_KEY = 'a-maze-ing-progress-v1'
 export function saveProgress(data) {
   const payload = {
     field: data.field,
+    wallVariants: data.wallVariants ?? null,
     heroX: data.heroX,
     heroY: data.heroY,
     heroSight: data.heroSight,
@@ -44,8 +45,13 @@ export function loadProgress(width, height) {
       return null
     }
 
+    const hasValidWallVariants = Array.isArray(parsed.wallVariants)
+      && parsed.wallVariants.length === width
+      && parsed.wallVariants.every((column) => Array.isArray(column) && column.length === height)
+
     return {
       field: parsed.field,
+      wallVariants: hasValidWallVariants ? parsed.wallVariants : null,
       heroX: parsed.heroX,
       heroY: parsed.heroY,
       heroSight: parsed.heroSight,

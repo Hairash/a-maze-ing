@@ -1,3 +1,5 @@
+import { randomWallVariant } from './const.js'
+
 const CELL_WEIGHTS = {
     'wall': 70,
     'empty': 69.5,
@@ -186,7 +188,20 @@ function generateField(width, height) {
     // console.log('Output field');
     // outputField(field);
     makeFieldLinked(field, width, height);
-    return field;
+    const wallVariants = generateWallVariants(width, height);
+    return { field, wallVariants };
+}
+
+function generateWallVariants(width, height) {
+    const variants = [];
+    for (let x = 0; x < width; x++) {
+        const col = [];
+        for (let y = 0; y < height; y++) {
+            col.push(randomWallVariant());
+        }
+        variants.push(col);
+    }
+    return variants;
 }
 
 // function generateItem(width, height, field) {
@@ -207,6 +222,7 @@ function selectEmptyRandomCell(field, width, height) {
 
 export {
     generateField,
+    generateWallVariants,
     selectEmptyRandomCell,
     makeFieldLinked,
 }

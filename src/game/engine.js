@@ -1,5 +1,5 @@
 import * as consts from './const.js'
-import { generateField, selectEmptyRandomCell } from './generator.js'
+import { generateField, generateWallVariants, selectEmptyRandomCell } from './generator.js'
 import { saveProgress, loadProgress } from './progressStorage.js'
 
 function isCellEmpty(field, width, height, x, y) {
@@ -164,6 +164,7 @@ function initLevel(data, forceNewLevel = false) {
 
   if (saved) {
     data.field = saved.field
+    data.wallVariants = saved.wallVariants ?? generateWallVariants(data.width, data.height)
     data.heroX = saved.heroX
     data.heroY = saved.heroY
     data.heroSight = saved.heroSight
@@ -173,7 +174,9 @@ function initLevel(data, forceNewLevel = false) {
     return
   }
 
-  data.field = generateField(data.width, data.height)
+  const generated = generateField(data.width, data.height)
+  data.field = generated.field
+  data.wallVariants = generated.wallVariants
   ;[data.heroX, data.heroY] = selectEmptyRandomCell(data.field, data.width, data.height)
   data.heroSight = consts.INIT_SIGHT
   data.stepCtr = 0
