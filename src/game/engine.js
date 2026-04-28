@@ -1,5 +1,5 @@
 import * as consts from './const.js'
-import { generateField, generateWallVariants, selectEmptyRandomCell } from './generator.js'
+import { generateField, generateWallVariants, selectHeroSpawnCell } from './generator.js'
 import { saveProgress, loadProgress } from './progressStorage.js'
 
 function isCellEmpty(field, width, height, x, y) {
@@ -171,13 +171,13 @@ function initLevel(data, forceNewLevel = false) {
     data.stepCtr = saved.stepCtr
     data.soulTrack = saved.soulTrack
     data.soulPath = saved.soulPath
-    return
+    return { loadedFromSave: true }
   }
 
   const generated = generateField(data.width, data.height)
   data.field = generated.field
   data.wallVariants = generated.wallVariants
-  ;[data.heroX, data.heroY] = selectEmptyRandomCell(data.field, data.width, data.height)
+  ;[data.heroX, data.heroY] = selectHeroSpawnCell(data.field, data.width, data.height)
   data.heroSight = consts.INIT_SIGHT
   data.stepCtr = 0
   data.soulTrack = {}
@@ -185,6 +185,7 @@ function initLevel(data, forceNewLevel = false) {
   incrementSoulTrack(data, data.heroX, data.heroY)
   appendSoulPath(data, data.heroX, data.heroY)
   saveProgress(data)
+  return { loadedFromSave: false }
 }
 
 export {

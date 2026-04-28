@@ -3,6 +3,12 @@ import { computed } from 'vue'
 import Cell from './Cell.vue'
 import SoulTrailOverlay from './SoulTrailOverlay.vue'
 import { isHidden } from '../game/engine.js'
+import {
+  CELL_FADE_DURATION_MS,
+  CELL_FADE_STEP_DELAY_MS,
+  INTRO_REVEAL_FADE_DURATION_MS,
+  HERO_FADE_DURATION_MS,
+} from '../game/const.js'
 
 const props = defineProps({
   width: { type: Number, required: true },
@@ -19,7 +25,11 @@ const props = defineProps({
   showSoulTrack: { type: Boolean, default: false },
   soulFadeSequenceActive: { type: Boolean, default: false },
   edgeHideSequenceActive: { type: Boolean, default: false },
+  introActive: { type: Boolean, default: false },
+  introRevealing: { type: Boolean, default: false },
 })
+
+const heroFadeDurationCss = `${HERO_FADE_DURATION_MS}ms`
 
 const effectiveSight = computed(() => (props.revealMap ? Number.POSITIVE_INFINITY : props.heroSight))
 
@@ -39,14 +49,28 @@ function getEdgeRank(x, y) {
   return Math.min(left, right, top, bottom)
 }
 
-function getCellHideDelayMs(x, y) {
-  if (!props.edgeHideSequenceActive) return 0
-  const stepDelayMs = 24
-  return getEdgeRank(x, y) * stepDelayMs
+function getHeroDistance(x, y) {
+  const dx = x - props.heroX
+  const dy = y - props.heroY
+  return Math.round(Math.sqrt(dx * dx + dy * dy))
+}
+
+function getCellTransitionDelayMs(x, y) {
+  if (props.edgeHideSequenceActive) {
+    return getEdgeRank(x, y) * CELL_FADE_STEP_DELAY_MS
+  }
+  if (props.introRevealing) {
+    return getHeroDistance(x, y) * CELL_FADE_STEP_DELAY_MS
+  }
+  return 0
+}
+
+function getCellTransitionDurationMs() {
+  return props.introRevealing ? INTRO_REVEAL_FADE_DURATION_MS : CELL_FADE_DURATION_MS
 }
 
 function isCellHidden(x, y) {
-  if (props.edgeHideSequenceActive) return true
+  if (props.edgeHideSequenceActive || props.introActive) return true
   return isHidden(x, y, props.heroX, props.heroY, effectiveSight.value)
 }
 </script>
@@ -60,7 +84,8 @@ function isCellHidden(x, y) {
           :type="getCellType(x - 1, y - 1)"
           :wall-variant="getWallVariant(x - 1, y - 1)"
           :is-hidden="isCellHidden(x - 1, y - 1)"
-          :transition-delay-ms="getCellHideDelayMs(x - 1, y - 1)"
+          :transition-delay-ms="getCellTransitionDelayMs(x - 1, y - 1)"
+          :transition-duration-ms="getCellTransitionDurationMs()"
           :activated="x - 1 === heroX && y - 1 === heroY"
         />
       </template>
@@ -74,7 +99,7 @@ function isCellHidden(x, y) {
     />
     <img
       v-if="!revealMap"
-      :class="['board-hero', { 'board-hero--fading': soulFadeSequenceActive }]"
+      :class="['board-hero', { 'board-hero--fading': soulFadeSequenceActive || introActive }]"
       :src="heroImage"
       :style="`left: ${heroX * cellSize}px; top: ${heroY * cellSize}px; width: ${cellSize}px; height: ${cellSize}px;`">
   </div>
@@ -95,7 +120,7 @@ function isCellHidden(x, y) {
   pointer-events: none;
   z-index: 3;
   opacity: 1;
-  transition: opacity 0.42s ease-out;
+  transition: opacity v-bind(heroFadeDurationCss) ease-out;
 }
 
 .board-hero--fading {

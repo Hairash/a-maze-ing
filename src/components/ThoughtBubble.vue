@@ -1,4 +1,6 @@
 <script setup>
+import { BUBBLE_FADE_DURATION_MS } from '../game/const.js'
+
 defineProps({
   text: { type: String, required: true },
   // Pre-computed style object: positioning, size, --bubble-flip-x/y,
@@ -6,6 +8,8 @@ defineProps({
   styleVars: { type: Object, default: () => ({}) },
 })
 defineEmits(['dismiss'])
+
+const bubbleFadeDurationCss = `${BUBBLE_FADE_DURATION_MS}ms`
 </script>
 
 <template>
@@ -58,5 +62,15 @@ defineEmits(['dismiss'])
   line-height: 1.3;
   text-align: center;
   overflow-wrap: anywhere;
+}
+
+/* TransitionGroup classes (set by App.vue's <TransitionGroup name="bubble">). */
+.bubble-enter-active,
+.bubble-leave-active {
+  transition: opacity v-bind(bubbleFadeDurationCss) ease-out;
+}
+.bubble-enter-from,
+.bubble-leave-to {
+  opacity: 0;
 }
 </style>

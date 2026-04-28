@@ -166,6 +166,26 @@ export function onMapRevealed(data) {
   tryFireGroup(data, GROUPS.MAP_REVEALED)
 }
 
+// Push a bubble with explicit text (used by the intro cutscene). Auto-hides
+// after BUBBLE_VISIBLE_SECONDS; does not expire by moves since the player
+// can't move during the intro.
+export function showIntroBubble(data, text) {
+  const id = data.thoughtNextBubbleId++
+  const visibleMs = BUBBLE_VISIBLE_SECONDS * 1000
+  const hideTimerId = window.setTimeout(() => {
+    hideBubbleById(data, id)
+  }, visibleMs)
+  data.thoughtBubbles.push({
+    id,
+    text,
+    group: 'intro',
+    hideTimerId,
+    moveAtShow: data.thoughtMoveCount,
+    maxMoves: Infinity,
+  })
+  return id
+}
+
 // Debug helper: fill every available slot with a random thought that never
 // expires. Used to visualise all bubble positions at once.
 export function debugFillAllSlots(data) {
@@ -205,6 +225,11 @@ export function hideOldestBubble(data) {
 // ============================================================
 
 function tryFireGroup(data, group, conditions = {}) {
+  // While the start menu or intro cutscene is playing, suppress all
+  // automatic thoughts; only `showIntroBubble` (which bypasses this
+  // function) is allowed to push bubbles.
+  if (data.introInProgress) return
+
   // During end-of-level states, passive and in-level active thoughts stop.
   if (group === GROUPS.PASSIVE && (data.levelComplete || data.mapRevealed)) return
 

@@ -220,9 +220,22 @@ function selectEmptyRandomCell(field, width, height) {
     }
 }
 
+// Hero spawn must land on a plain empty cell — never on a lamp or the
+// finish portal, so the player gets a clean starting tile.
+function selectHeroSpawnCell(field, width, height) {
+    while (true) {
+        const x = Math.floor(Math.random() * width);
+        const y = Math.floor(Math.random() * height);
+        if (field[x][y] === 'empty') {
+            return [x, y];
+        }
+    }
+}
+
 export {
     generateField,
     generateWallVariants,
     selectEmptyRandomCell,
+    selectHeroSpawnCell,
     makeFieldLinked,
 }

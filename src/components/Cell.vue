@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue'
-import { WALL_FOLDER } from '../game/const.js'
+import { WALL_FOLDER, CELL_FADE_DURATION_MS } from '../game/const.js'
 
 const props = defineProps({
   size: {
@@ -30,6 +30,11 @@ const props = defineProps({
     required: false,
     default: 0,
   },
+  transitionDurationMs: {
+    type: Number,
+    required: false,
+    default: CELL_FADE_DURATION_MS,
+  },
 })
 
 const cellImageSrc = computed(() => {
@@ -47,6 +52,7 @@ const cellImageSrc = computed(() => {
       width: `${size}px`,
       height: `${size}px`,
       transitionDelay: `${Math.max(0, transitionDelayMs)}ms`,
+      transitionDuration: `${transitionDurationMs}ms`,
     }"
   >
     <span v-if="type === 'lamp' || type === 'finish'" class="lamp-glow"></span>
@@ -63,7 +69,7 @@ const cellImageSrc = computed(() => {
   display: inline-block;
   vertical-align: top;
   border: solid 1px #ddd;
-  transition: opacity 0.5s;
+  transition-property: opacity;
 }
 .cell.hidden {
   opacity: 0;

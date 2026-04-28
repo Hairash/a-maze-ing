@@ -15,27 +15,36 @@
       :show-soul-track="game.mapRevealed"
       :soul-fade-sequence-active="soulFadeSequenceActive"
       :edge-hide-sequence-active="edgeHideSequenceActive"
+      :intro-active="introActive"
+      :intro-revealing="introRevealing"
     />
     <CarryOnButton :visible="game.mapRevealed" @click="carryOn" />
-    <ThoughtBubble
-      v-for="bubble in game.thoughtBubbles"
-      :key="bubble.id"
-      :text="bubble.text"
-      :style-vars="bubbleStylesById[bubble.id]"
-      @dismiss="dismissThoughtBubble(bubble.id)"
-    />
+    <TransitionGroup name="bubble" tag="div" class="bubble-layer">
+      <ThoughtBubble
+        v-for="bubble in game.thoughtBubbles"
+        :key="bubble.id"
+        :text="bubble.text"
+        :style-vars="bubbleStylesById[bubble.id]"
+        @dismiss="dismissThoughtBubble(bubble.id)"
+      />
+    </TransitionGroup>
   </main>
   <PortalDialog :visible="showPortalDialog" @confirm="confirmRevealMap" />
-  <MovePad :enabled="!game.levelComplete" @move="moveHero" />
+  <MovePad
+    :enabled="!game.levelComplete && !introActive && !introRevealing && !showStartMenu"
+    @move="moveHero"
+  />
+  <StartMenu v-if="showStartMenu" @start="startGame" />
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, reactive, computed, watch, watchEffect, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import Board from './components/Board.vue'
 import CarryOnButton from './components/CarryOnButton.vue'
 import PortalDialog from './components/PortalDialog.vue'
 import MovePad from './components/MovePad.vue'
 import ThoughtBubble from './components/ThoughtBubble.vue'
+import StartMenu from './components/StartMenu.vue'
 import { processKey, scrollToPoint, clampScrollToBoardBounds, initLevel } from './game/engine.js'
 import * as consts from './game/const.js'
 import { randomGhostImage } from './game/const.js'
@@ -49,6 +58,7 @@ import {
   onMove as onThoughtMove,
   onLevelComplete as onThoughtLevelComplete,
   onMapRevealed as onThoughtMapRevealed,
+  showIntroBubble,
   debugFillAllSlots,
 } from './game/thoughtBubble.js'
 import {
@@ -81,12 +91,31 @@ const heroImage = ref(randomGhostImage())
 const showPortalDialog = ref(false)
 const soulFadeSequenceActive = ref(false)
 const edgeHideSequenceActive = ref(false)
+const introActive = ref(false)
+const introRevealing = ref(false)
+const showStartMenu = ref(false)
 const bubblePlacementById = ref({})
+
+// Mirror "menu / intro / reveal" state onto game so the thought-bubble
+// module can suppress every automatic bubble while either is active.
+watchEffect(() => {
+  game.introInProgress = showStartMenu.value || introActive.value || introRevealing.value
+})
+
+const INTRO_BUBBLES = [
+  'Where am I?',
+  'What am I doing here?',
+  'How did it happen?',
+  'I need to find way out',
+]
+const INTRO_BUBBLE_INTERVAL_MS = 5000
+const INTRO_REVEAL_AFTER_LAST_MS = 5000
 
 let scrollClampFrameId = null
 let centerOnHeroTimerIds = []
 let soulFadeSequenceTimerId = null
 let edgeHideSequenceTimerId = null
+let introTimerIds = []
 
 const cellSize = computed(() => {
   // Make the sight square fit the shorter viewport axis exactly.
@@ -212,8 +241,41 @@ function handleKeydown(e) {
   moveHero(e.key)
 }
 
+function clearIntroTimers() {
+  introTimerIds.forEach((id) => window.clearTimeout(id))
+  introTimerIds = []
+}
+
+function playIntroCutscene() {
+  introActive.value = true
+  introRevealing.value = false
+  clearIntroTimers()
+  INTRO_BUBBLES.forEach((text, i) => {
+    const id = window.setTimeout(() => {
+      showIntroBubble(game, text)
+    }, i * INTRO_BUBBLE_INTERVAL_MS)
+    introTimerIds.push(id)
+  })
+  const revealAtMs = (INTRO_BUBBLES.length - 1) * INTRO_BUBBLE_INTERVAL_MS + INTRO_REVEAL_AFTER_LAST_MS
+  introTimerIds.push(window.setTimeout(() => {
+    introActive.value = false
+    introRevealing.value = true
+    // Reveal animation: staggered per cell (up to sight radius) plus fade duration.
+    const maxStaggerMs = Math.ceil(consts.INIT_SIGHT) * consts.CELL_FADE_STEP_DELAY_MS
+    const revealAnimMs = maxStaggerMs + consts.INTRO_REVEAL_FADE_DURATION_MS
+    introTimerIds.push(window.setTimeout(() => {
+      introRevealing.value = false
+    }, revealAnimMs))
+  }, revealAtMs))
+}
+
 function moveHero(key) {
-  if (game.levelComplete) return
+  if (
+    game.levelComplete
+    || introActive.value
+    || introRevealing.value
+    || showStartMenu.value
+  ) return
   const result = processKey(key, game)
   heroImage.value = randomGhostImage()
   onThoughtMove(game)
@@ -230,10 +292,10 @@ function finishLevel(isLoad = false) {
   clearSoulFadeSequenceTimer()
   clearEdgeHideSequenceTimer()
 
-  const soulFadeDurationMs = 420
+  const soulFadeDurationMs = consts.HERO_FADE_DURATION_MS
   const edgeLayers = Math.floor(Math.min(game.width, game.height) / 2)
-  const perLayerDelayMs = 24
-  const fadeDurationMs = 500
+  const perLayerDelayMs = consts.CELL_FADE_STEP_DELAY_MS
+  const fadeDurationMs = consts.CELL_FADE_DURATION_MS
   const hideCellsDelayMs = isLoad ? Math.floor(soulFadeDurationMs * 0.5) : soulFadeDurationMs
   const sequenceDurationMs = hideCellsDelayMs + edgeLayers * perLayerDelayMs + fadeDurationMs
 
@@ -262,15 +324,25 @@ function revealMap() {
   game.mapRevealed = true
   onThoughtMapRevealed(game)
   nextTick(() => {
-    clampScrollToBoardBounds()
+    // Center the revealed-map view on the cross (start of the soul
+    // path) so the player sees where their journey began.
+    const start = game.soulPath?.[0]
+    if (start) {
+      scrollToPoint(start[0], start[1], cellSize.value)
+    } else {
+      clampScrollToBoardBounds()
+    }
   })
 }
 
 function carryOn() {
   clearSoulFadeSequenceTimer()
   clearEdgeHideSequenceTimer()
+  clearIntroTimers()
   soulFadeSequenceActive.value = false
   edgeHideSequenceActive.value = false
+  introActive.value = false
+  introRevealing.value = false
   showPortalDialog.value = false
   game.mapRevealed = false
   game.levelComplete = false
@@ -290,9 +362,19 @@ watch([viewportWidth, viewportHeight], () => reconcileBubblePlacements())
 
 // --- Lifecycle ---
 
-initLevel(game)
+const initResult = initLevel(game)
 if (isHeroOnPortalCell()) {
   finishLevel(true)
+} else if (!initResult.loadedFromSave) {
+  // First-time launch: show the start menu over a black screen, defer the
+  // intro cutscene until the player presses "Start game".
+  showStartMenu.value = true
+  introActive.value = true
+}
+
+function startGame() {
+  showStartMenu.value = false
+  playIntroCutscene()
 }
 
 onMounted(() => {
@@ -321,6 +403,7 @@ onBeforeUnmount(() => {
   stopThoughtBubbleLoop(game)
   clearSoulFadeSequenceTimer()
   clearEdgeHideSequenceTimer()
+  clearIntroTimers()
 })
 
 watch(() => game.field, () => queueCenterOnHero())
@@ -346,6 +429,12 @@ body {
 main {
   touch-action: none;
   overscroll-behavior: none;
+}
+
+/* TransitionGroup wrapper for thought bubbles — no layout impact; children
+   (ThoughtBubble) are position: fixed. */
+.bubble-layer {
+  display: contents;
 }
 
 .main--revealed {
