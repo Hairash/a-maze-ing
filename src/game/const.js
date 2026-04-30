@@ -16,6 +16,13 @@ export const INTRO_REVEAL_FADE_DURATION_MS = CELL_FADE_DURATION_MS * 3
 export const HERO_FADE_DURATION_MS = 1020
 export const BUBBLE_FADE_DURATION_MS = 400
 
+// Control hints — shown once, the first time the player finishes the
+// intro cutscene.
+export const HINT_DELAY_AFTER_INTRO_MS = 1000
+export const HINT_VISIBLE_MS = 15000
+export const HINT_FADE_MS = 400
+export const MOVE_PAD_IDLE_PULSE_MS = 5000
+
 // Ghost sprites: subfolder under public/images/ containing
 // ghost_1.png..ghost_N.png. Keep GHOST_COUNT in sync with the
 // actual number of files in that folder.

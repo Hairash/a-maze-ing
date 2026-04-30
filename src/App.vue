@@ -32,8 +32,10 @@
   <PortalDialog :visible="showPortalDialog" @confirm="confirmRevealMap" />
   <MovePad
     :enabled="!game.levelComplete && !introActive && !introRevealing && !showStartMenu"
+    :pulse-when-idle="showHints && isMobile"
     @move="moveHero"
   />
+  <ControlHints v-if="showHints" :is-mobile="isMobile" />
   <StartMenu v-if="showStartMenu" @start="startGame" />
 </template>
 
@@ -45,9 +47,11 @@ import PortalDialog from './components/PortalDialog.vue'
 import MovePad from './components/MovePad.vue'
 import ThoughtBubble from './components/ThoughtBubble.vue'
 import StartMenu from './components/StartMenu.vue'
+import ControlHints from './components/ControlHints.vue'
 import { processKey, scrollToPoint, clampScrollToBoardBounds, initLevel } from './game/engine.js'
 import * as consts from './game/const.js'
 import { randomGhostImage } from './game/const.js'
+import { hasShownControlHints, markControlHintsShown } from './game/progressStorage.js'
 import {
   initialThoughtBubbleState,
   startThoughtBubbleLoop,
@@ -94,7 +98,18 @@ const edgeHideSequenceActive = ref(false)
 const introActive = ref(false)
 const introRevealing = ref(false)
 const showStartMenu = ref(false)
+const showHints = ref(false)
 const bubblePlacementById = ref({})
+
+const isMobile = (
+  typeof window !== 'undefined'
+  && (
+    window.matchMedia?.('(pointer: coarse)').matches
+    || navigator.maxTouchPoints > 0
+    || 'ontouchstart' in window
+  )
+)
+let hintTimerIds = []
 
 // Mirror "menu / intro / reveal" state onto game so the thought-bubble
 // module can suppress every automatic bubble while either is active.
@@ -265,8 +280,26 @@ function playIntroCutscene() {
     const revealAnimMs = maxStaggerMs + consts.INTRO_REVEAL_FADE_DURATION_MS
     introTimerIds.push(window.setTimeout(() => {
       introRevealing.value = false
+      maybeScheduleControlHints()
     }, revealAnimMs))
   }, revealAtMs))
+}
+
+function clearHintTimers() {
+  hintTimerIds.forEach((id) => window.clearTimeout(id))
+  hintTimerIds = []
+}
+
+function maybeScheduleControlHints() {
+  if (hasShownControlHints()) return
+  clearHintTimers()
+  hintTimerIds.push(window.setTimeout(() => {
+    showHints.value = true
+    markControlHintsShown()
+    hintTimerIds.push(window.setTimeout(() => {
+      showHints.value = false
+    }, consts.HINT_VISIBLE_MS))
+  }, consts.HINT_DELAY_AFTER_INTRO_MS))
 }
 
 function moveHero(key) {
@@ -404,6 +437,7 @@ onBeforeUnmount(() => {
   clearSoulFadeSequenceTimer()
   clearEdgeHideSequenceTimer()
   clearIntroTimers()
+  clearHintTimers()
 })
 
 watch(() => game.field, () => queueCenterOnHero())

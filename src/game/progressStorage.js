@@ -6,6 +6,21 @@
 // fresh level without crashing on stale or corrupt data.
 
 const STORAGE_KEY = 'a-maze-ing-progress-v1'
+const HINTS_SHOWN_KEY = 'a-maze-ing-hints-shown-v1'
+
+export function hasShownControlHints() {
+  try {
+    return localStorage.getItem(HINTS_SHOWN_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
+
+export function markControlHintsShown() {
+  try {
+    localStorage.setItem(HINTS_SHOWN_KEY, 'true')
+  } catch {}
+}
 
 export function saveProgress(data) {
   const payload = {

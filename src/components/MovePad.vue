@@ -1,12 +1,48 @@
 <script setup>
 import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
+import { MOVE_PAD_IDLE_PULSE_MS } from '../game/const.js'
 
 const props = defineProps({
   // When false, the pad stays hidden regardless of touch capability
   // (e.g. while a level-complete sequence is playing).
   enabled: { type: Boolean, default: true },
+  // While true, buttons pulse after MOVE_PAD_IDLE_PULSE_MS of inactivity
+  // (used to hint the controls to first-time mobile players).
+  pulseWhenIdle: { type: Boolean, default: false },
 })
-defineEmits(['move'])
+const emit = defineEmits(['move'])
+
+const idle = ref(false)
+let idleTimerId = null
+
+function clearIdleTimer() {
+  if (idleTimerId !== null) {
+    window.clearTimeout(idleTimerId)
+    idleTimerId = null
+  }
+}
+
+function scheduleIdle() {
+  clearIdleTimer()
+  if (!props.pulseWhenIdle) {
+    idle.value = false
+    return
+  }
+  idle.value = false
+  idleTimerId = window.setTimeout(() => {
+    idle.value = true
+  }, MOVE_PAD_IDLE_PULSE_MS)
+}
+
+function onMove(direction) {
+  emit('move', direction)
+  scheduleIdle()
+}
+
+watch(() => props.pulseWhenIdle, (active) => {
+  if (active) scheduleIdle()
+  else { clearIdleTimer(); idle.value = false }
+})
 
 const PAD_SIZE = 56 * 3 + 8 * 2
 const INSET_RIGHT = 20
@@ -64,6 +100,7 @@ onBeforeUnmount(() => {
     window.cancelAnimationFrame(frameId)
     frameId = null
   }
+  clearIdleTimer()
   document.body.removeEventListener('scroll', schedulePositionUpdate)
   window.removeEventListener('resize', detectVisibility)
   window.removeEventListener('resize', schedulePositionUpdate)
@@ -77,12 +114,18 @@ watch(() => props.enabled, () => {
 
 <template>
   <teleport to="body">
-    <div v-if="visible" class="move-pad" :style="style" aria-label="Movement controls">
+    <div
+      v-if="visible"
+      class="move-pad"
+      :class="{ 'move-pad--idle-pulse': idle && pulseWhenIdle }"
+      :style="style"
+      aria-label="Movement controls"
+    >
       <button
         type="button"
         class="move-pad__button move-pad__button--up"
         aria-label="Move up"
-        @pointerdown.prevent.stop="$emit('move', 'ArrowUp')"
+        @pointerdown.prevent.stop="onMove('ArrowUp')"
       >
         <span class="move-pad__arrow move-pad__arrow--up"></span>
       </button>
@@ -90,7 +133,7 @@ watch(() => props.enabled, () => {
         type="button"
         class="move-pad__button move-pad__button--left"
         aria-label="Move left"
-        @pointerdown.prevent.stop="$emit('move', 'ArrowLeft')"
+        @pointerdown.prevent.stop="onMove('ArrowLeft')"
       >
         <span class="move-pad__arrow move-pad__arrow--left"></span>
       </button>
@@ -98,7 +141,7 @@ watch(() => props.enabled, () => {
         type="button"
         class="move-pad__button move-pad__button--right"
         aria-label="Move right"
-        @pointerdown.prevent.stop="$emit('move', 'ArrowRight')"
+        @pointerdown.prevent.stop="onMove('ArrowRight')"
       >
         <span class="move-pad__arrow move-pad__arrow--right"></span>
       </button>
@@ -106,7 +149,7 @@ watch(() => props.enabled, () => {
         type="button"
         class="move-pad__button move-pad__button--down"
         aria-label="Move down"
-        @pointerdown.prevent.stop="$emit('move', 'ArrowDown')"
+        @pointerdown.prevent.stop="onMove('ArrowDown')"
       >
         <span class="move-pad__arrow move-pad__arrow--down"></span>
       </button>
@@ -159,4 +202,12 @@ watch(() => props.enabled, () => {
 .move-pad__arrow--right { transform: rotate(45deg); }
 .move-pad__arrow--down { transform: rotate(135deg); }
 .move-pad__arrow--left { transform: rotate(-135deg); }
+
+.move-pad--idle-pulse .move-pad__button {
+  animation: movePadIdlePulse 1.2s ease-in-out infinite;
+}
+@keyframes movePadIdlePulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
 </style>
